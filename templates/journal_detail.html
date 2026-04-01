@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid">
+  <div class="card"><div class="muted">Панель</div><div style="margin-top:6px;font-weight:600;">{{ event.panel_name }}</div></div>
+  <div class="card"><div class="muted">Время</div><div style="margin-top:6px;font-weight:600;">{{ event.event_time | format_dt }}</div></div>
+  <div class="card"><div class="muted">Сотрудник</div><div style="margin-top:6px;font-weight:600;">{{ event.employee_name_snapshot or event.employee_id or "Не сопоставлен" }}</div></div>
+  <div class="card"><div class="muted">Способ</div><div style="margin-top:6px;">{{ human_method(event.unlock_method) }}</div></div>
+  <div class="card"><div class="muted">Результат</div><div style="margin-top:6px;"><span class="pill {{ event.result or 'unknown' }}">{{ human_result(event.result) }}</span></div></div>
+  <div class="card"><div class="muted">Карта</div><div style="margin-top:6px;font-weight:600;">{{ event.card_number_snapshot or "—" }}</div></div>
+</section>
+
+<section class="card">
+  <h3 style="margin-top:0;">Фото</h3>
+  {% if event.snapshot_path %}
+  <img src="/media/{{ event.snapshot_path }}" style="max-width:420px; width:100%; border-radius:16px; border:1px solid var(--line);" alt="snapshot">
+  {% else %}
+  <p class="muted">Фото не сохранено.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <details>
+    <summary style="cursor:pointer;font-weight:600;font-size:1rem;">Raw JSON</summary>
+    <pre style="white-space:pre-wrap;word-break:break-word;margin-top:10px;font-size:.84rem;color:var(--muted);">{{ event.raw_json }}</pre>
+  </details>
+</section>
+{% endblock %}

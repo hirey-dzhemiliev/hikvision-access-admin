@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <form method="get" class="form-grid" id="employee-filters" style="align-items:start;">
+    <div class="form-row">
+      <label>Поиск</label>
+      <input type="text" name="q" value="{{ search }}" placeholder="ID, имя, карта" id="employee-live-search">
+      <div class="field-help">Фильтрация работает сразу по мере ввода и помогает быстро найти сотрудника по ID, имени, комнате или карте.</div>
+    </div>
+    <div class="form-row">
+      <label>Показывать неактивных</label>
+      <select name="include_inactive">
+        <option value="0" {% if not include_inactive %}selected{% endif %}>Нет</option>
+        <option value="1" {% if include_inactive %}selected{% endif %}>Да</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Вид списка</label>
+      <select name="view">
+        <option value="table" {% if view_mode != 'cards' %}selected{% endif %}>Таблица</option>
+        <option value="cards" {% if view_mode == 'cards' %}selected{% endif %}>Карточки</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>&nbsp;</label>
+      <div class="actions" style="margin-top:0;">
+        <button type="submit">Применить</button>
+        <a class="button secondary" href="/employees/new">Новый сотрудник</a>
+      </div>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <form method="post" action="/employees/bulk" class="stack" id="employees-bulk-form">
+    <input type="hidden" name="selected_employee_ids" id="selected-employee-ids" value="">
+    <input type="hidden" name="current_view" value="{{ view_mode }}">
+    <input type="hidden" name="current_include_inactive" value="{{ 1 if include_inactive else 0 }}">
+    <input type="hidden" name="current_search" value="{{ search }}">
+    <div class="actions" style="margin-top:0;">
+      <label class="selection-chip">
+        <input type="checkbox" id="employees-select-all">
+        <span>Выбрать всех</span>
+      </label>
+      <span class="muted" id="employees-selected-count">Выбрано: 0</span>
+    </div>
+    <div class="actions" style="margin-top:0;">
+      <button type="submit" name="bulk_action" value="sync" data-bulk-submit disabled>Синхронизировать выбранных</button>
+      <button type="submit" name="bulk_action" value="activate" class="secondary" data-bulk-submit disabled>Активировать</button>
+      <button type="submit" name="bulk_action" value="deactivate" class="secondary" data-bulk-submit disabled>Деактивировать</button>
+      <button type="submit" name="bulk_action" value="delete" class="danger" data-bulk-submit data-confirm="Удалить выбранных сотрудников из локальной БД? На следующей синхронизации они будут удалены и с панелей." disabled>Удалить</button>
+    </div>
+    <div class="field-help">Активный сотрудник должен быть на панели. Деактивированный сотрудник при синхронизации будет удалён с панели.</div>
+  </form>
+
+  {% if view_mode == 'cards' %}
+  <div class="employee-card-grid" id="employees-card-grid">
+    {% for employee in employees %}
+    <article class="card employee-card" data-search="{{ (employee.employee_id ~ ' ' ~ employee.first_name ~ ' ' ~ employee.last_name ~ ' ' ~ (employee.card_number or '') ~ ' ' ~ (employee.room_number or ''))|lower }}">
+      <div class="employee-card-header">
+        <input type="checkbox" class="employee-select" value="{{ employee.id }}" style="width:16px;height:16px;flex-shrink:0;accent-color:var(--accent);" title="Выбрать">
+        {% if employee.photo_path %}
+        <img class="thumb" src="/media/{{ employee.photo_path }}" alt="photo">
+        {% else %}
+        <div class="thumb table-cell-center"><span class="muted">нет фото</span></div>
+        {% endif %}
+        <div class="employee-card-title">
+          <strong>{{ employee.first_name }} {{ employee.last_name }}</strong>
+          <span class="muted">ID {{ employee.employee_id }}</span>
+          <span class="pill {{ employee_state_pill_class(employee) }}">{{ human_employee_state(employee) }}</span>
+        </div>
+      </div>
+      <div class="employee-card-meta">
+        <div>Комната: <strong>{{ employee.room_number or "—" }}</strong></div>
+        <div>Карта: <strong>{{ employee.card_number or "—" }}</strong></div>
+      </div>
+      <div class="status-list">
+        {% for panel in panels %}
+        {% set status = sync_status.get(employee.id, {}).get(panel.id, {'icon':'help_outline','color':'muted','title':'Нет данных'}) %}
+        <div class="status-row">
+          <span class="status-icon {{ status.color }}"><i class="material-icons {{ status.color }}">{{ status.icon }}</i></span>
+          <div class="table-cell-stack" style="min-height:auto;">
+            <strong>{{ panel.name }}</strong>
+            <span class="muted">{{ status.title }}</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="actions">
+        <a class="button secondary icon-button" href="/employees/{{ employee.id }}/edit" title="Редактировать" aria-label="Редактировать">
+          <i class="material-icons">edit</i>
+        </a>
+        <a class="button secondary icon-button" href="/employees/{{ employee.id }}/sync" title="Синхронизировать" aria-label="Синхронизировать">
+          <i class="material-icons">sync</i>
+        </a>
+        <form class="inline" method="post" action="/employees/{{ employee.id }}/toggle">
+          <input type="hidden" name="current_view" value="{{ view_mode }}">
+          <input type="hidden" name="current_include_inactive" value="{{ 1 if include_inactive else 0 }}">
+          <input type="hidden" name="current_search" value="{{ search }}">
+          <button class="secondary icon-button" type="submit" title="{{ employee_toggle_label(employee) }}" aria-label="{{ employee_toggle_label(employee) }}">
+            <i class="material-icons">{% if employee.lifecycle_state == 'active' %}pause_circle_outline{% else %}play_circle_outline{% endif %}</i>
+          </button>
+        </form>
+        <form class="inline" method="post" action="/employees/{{ employee.id }}/delete">
+          <input type="hidden" name="current_view" value="{{ view_mode }}">
+          <input type="hidden" name="current_include_inactive" value="{{ 1 if include_inactive else 0 }}">
+          <input type="hidden" name="current_search" value="{{ search }}">
+          <button class="danger icon-button" type="submit" title="Удалить" aria-label="Удалить" data-confirm="Удалить сотрудника из локальной БД? На следующей синхронизации он будет удалён и с панелей.">
+            <i class="material-icons">delete</i>
+          </button>
+        </form>
+      </div>
+    </article>
+    {% else %}
+    <div class="muted">Сотрудников пока нет.</div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>ID</th>
+          <th>Фото</th>
+          <th>Имя</th>
+          <th>Комната</th>
+          <th>Карта</th>
+          <th>Статус</th>
+          <th>Панели</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="employees-table-body">
+        {% for employee in employees %}
+        <tr data-search="{{ (employee.employee_id ~ ' ' ~ employee.first_name ~ ' ' ~ employee.last_name ~ ' ' ~ (employee.card_number or '') ~ ' ' ~ (employee.room_number or ''))|lower }}">
+          <td style="width:36px;">
+            <input type="checkbox" class="employee-select" value="{{ employee.id }}" style="width:16px;height:16px;accent-color:var(--accent);" title="Выбрать">
+          </td>
+          <td>{{ employee.employee_id }}</td>
+          <td>
+            <div class="table-media">
+              {% if employee.photo_path %}
+              <img class="thumb" src="/media/{{ employee.photo_path }}" alt="photo">
+              {% else %}
+              <span class="muted">нет</span>
+              {% endif %}
+            </div>
+          </td>
+          <td>{{ employee.first_name }} {{ employee.last_name }}</td>
+          <td>{{ employee.room_number or "—" }}</td>
+          <td>{{ employee.card_number or "—" }}</td>
+          <td>
+            <div class="table-cell-center">
+              <span class="pill {{ employee_state_pill_class(employee) }}">{{ human_employee_state(employee) }}</span>
+            </div>
+          </td>
+          <td>
+            <div class="table-cell-center status-icons">
+              {% for panel in panels %}
+              {% set status = sync_status.get(employee.id, {}).get(panel.id, {'icon':'help_outline','color':'muted','title':'Нет данных'}) %}
+              <span class="status-icon {{ status.color }}" title="{{ panel.name }}: {{ status.title }}">
+                <i class="material-icons {{ status.color }}">{{ status.icon }}</i>
+              </span>
+              {% endfor %}
+            </div>
+          </td>
+          <td>
+            <div class="table-actions">
+              <a class="button secondary icon-button" href="/employees/{{ employee.id }}/edit" title="Редактировать" aria-label="Редактировать">
+                <i class="material-icons">edit</i>
+              </a>
+              <a class="button secondary icon-button" href="/employees/{{ employee.id }}/sync" title="Синхронизировать" aria-label="Синхронизировать">
+                <i class="material-icons">sync</i>
+              </a>
+              <form class="inline" method="post" action="/employees/{{ employee.id }}/toggle">
+                <input type="hidden" name="current_view" value="{{ view_mode }}">
+                <input type="hidden" name="current_include_inactive" value="{{ 1 if include_inactive else 0 }}">
+                <input type="hidden" name="current_search" value="{{ search }}">
+                <button class="secondary icon-button" type="submit" title="{{ employee_toggle_label(employee) }}" aria-label="{{ employee_toggle_label(employee) }}">
+                  <i class="material-icons">{% if employee.lifecycle_state == 'active' %}pause_circle_outline{% else %}play_circle_outline{% endif %}</i>
+                </button>
+              </form>
+              <form class="inline" method="post" action="/employees/{{ employee.id }}/delete">
+                <input type="hidden" name="current_view" value="{{ view_mode }}">
+                <input type="hidden" name="current_include_inactive" value="{{ 1 if include_inactive else 0 }}">
+                <input type="hidden" name="current_search" value="{{ search }}">
+                <button class="danger icon-button" type="submit" title="Удалить" aria-label="Удалить" data-confirm="Удалить сотрудника из локальной БД? На следующей синхронизации он будет удалён и с панелей.">
+                  <i class="material-icons">delete</i>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="muted">Сотрудников пока нет.</td></tr>
+        {% endfor %}
+      </tbody>
+  </table>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h3 style="margin-top:0;">Расшифровка статусов по панелям</h3>
+  <div class="status-icons">
+    <span class="status-icon ok"><i class="material-icons ok">check_circle</i></span> Синхронизирован
+    <span class="status-icon warn"><i class="material-icons warn">sync_problem</i></span> Данные отличаются
+    <span class="status-icon warn"><i class="material-icons warn">cloud_off</i></span> Нет на панели
+    <span class="status-icon danger"><i class="material-icons danger">error_outline</i></span> Ошибка чтения панели
+    <span class="status-icon muted"><i class="material-icons muted">portable_wifi_off</i></span> Панель недоступна
+    <span class="status-icon muted"><i class="material-icons muted">pause_circle_outline</i></span> Деактивирован локально
+  </div>
+  <div class="field-help">Каждая иконка показывает состояние конкретного сотрудника на конкретной панели, а не общий статус по системе.</div>
+</section>
+
+{% endblock %}

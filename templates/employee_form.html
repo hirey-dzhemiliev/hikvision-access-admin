@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  {% if error %}
+  <div class="notice error" style="margin-bottom:16px;">{{ error }}</div>
+  {% endif %}
+  <form method="post" enctype="multipart/form-data" class="stack">
+    <div class="form-grid">
+      <div class="form-row">
+        <label>Идентификатор сотрудника</label>
+        <input type="text" name="employee_id" required value="{{ employee.employee_id if employee else '' }}">
+      </div>
+      <div class="form-row">
+        <label>Имя</label>
+        <input type="text" name="first_name" required value="{{ employee.first_name if employee else '' }}">
+      </div>
+      <div class="form-row">
+        <label>Фамилия</label>
+        <input type="text" name="last_name" required value="{{ employee.last_name if employee else '' }}">
+      </div>
+      <div class="form-row">
+        <label>Номер комнаты</label>
+        <input type="text" name="room_number" value="{{ employee.room_number if employee else '' }}">
+      </div>
+      <div class="form-row">
+        <label>Номер карты</label>
+        <input type="text" name="card_number" value="{{ employee.card_number if employee else '' }}">
+      </div>
+      <div class="form-row">
+        <label>Статус</label>
+        {% set raw_state = employee.lifecycle_state if employee and employee.lifecycle_state else ('active' if (not employee or employee.is_active) else 'deactivated') %}
+        {% set current_state = raw_state if raw_state in ['active', 'deactivated'] else 'deactivated' %}
+        <select name="lifecycle_state">
+          <option value="active" {% if current_state == 'active' %}selected{% endif %}>Активен</option>
+          <option value="deactivated" {% if current_state == 'deactivated' %}selected{% endif %}>Деактивирован</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Фото</label>
+        <input type="file" name="photo" accept=".jpg,.jpeg,.png" style="border:none !important;line-height:22px !important;font-size:14px !important;">
+        <div class="field-help">Рекомендация для фото лица: JPEG/PNG, лицо анфас, один человек в кадре, без сильных теней. Лучше использовать изображение не меньше 600×800 px, чтобы панель уверенно строила биометрию.</div>
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Комментарий</label>
+      <textarea name="comment">{{ employee.comment if employee else '' }}</textarea>
+    </div>
+    {% if employee and employee.photo_path %}
+    <div class="form-row">
+      <label>Текущее фото</label>
+      <img class="thumb" src="/media/{{ employee.photo_path }}" alt="photo">
+    </div>
+    {% endif %}
+    <div class="actions">
+      <button type="submit">Сохранить</button>
+      <a class="button secondary" href="/employees">Назад</a>
+      {% if employee %}
+      <a class="button secondary" href="/sync?employee_id={{ employee.employee_id }}">Синхронизировать сотрудника</a>
+      <button class="danger" type="submit" formaction="/employees/{{ employee.id }}/delete" formmethod="post" data-confirm="Удалить сотрудника из локальной БД? На следующей синхронизации он будет удалён и с панелей.">Удалить</button>
+      {% endif %}
+    </div>
+  </form>
+</section>
+
+{% if employee and panels %}
+<section class="card">
+  <h3 style="margin-top:0;">Статус по панелям</h3>
+  <div class="status-icons">
+    {% for panel in panels %}
+    {% set status = sync_status.get(panel.id, {'icon':'help_outline','color':'muted','title':'Нет данных'}) %}
+    <div class="table-cell-stack" style="align-items:center; min-width:110px;">
+      <span class="status-icon {{ status.color }}" title="{{ panel.name }}: {{ status.title }}">
+        <i class="material-icons {{ status.color }}">{{ status.icon }}</i>
+      </span>
+      <strong>{{ panel.name }}</strong>
+      <span class="muted" style="text-align:center;">{{ status.title }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/sync?employee_id={{ employee.employee_id }}">Открыть предпросмотр синхронизации</a>
+  </div>
+</section>
+
+<section class="card">
+  <h3 style="margin-top:0;">Последние проходы</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Время</th>
+        <th>Панель</th>
+        <th>Способ</th>
+        <th>Результат</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in events %}
+      <tr>
+        <td>{{ row.event_time | format_dt }}</td>
+        <td><a href="/panels/{{ row.panel_id }}">{{ row.panel_name }}</a></td>
+        <td>{{ human_method(row.unlock_method) }}</td>
+        <td><span class="pill {{ row.result or 'unknown' }}">{{ human_result(row.result) }}</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="muted">Проходов пока нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h3 style="margin-top:0;">Последние sync-действия</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Время</th>
+        <th>Панель</th>
+        <th>Действие</th>
+        <th>Статус</th>
+        <th>Сообщение</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in employee_sync_actions %}
+      <tr>
+        <td>{{ row.created_at }}</td>
+        <td>{{ row.panel_name }}</td>
+        <td>{{ human_sync_action(row.action) }}</td>
+        <td><span class="pill {{ 'ok' if row.status == 'ok' else ('error' if row.status == 'error' else 'unknown') }}">{{ human_sync_status(row.status, row.message) }}</span></td>
+        <td>{{ human_hik_error(row.message) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">Sync-действий по сотруднику пока нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

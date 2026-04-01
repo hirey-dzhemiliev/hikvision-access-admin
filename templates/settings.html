@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid">
+  <div class="card"><div class="muted">Событий в БД</div><div class="metric">{{ db_stats.total_events }}</div></div>
+  <div class="card"><div class="muted">Несопоставленных</div><div class="metric">{{ db_stats.unmatched_events }}</div></div>
+  <div class="card"><div class="muted">Файлов медиа</div><div class="metric">{{ media_stats.files_count }}</div></div>
+  <div class="card"><div class="muted">Размер медиа</div><div class="metric">{{ media_stats.total_size_mb }} MB</div></div>
+</section>
+
+<section class="card">
+  <form method="post" class="stack">
+    <h3 style="margin-top:0;">Хранение журнала</h3>
+    <p class="field-help">Здесь задаётся, как долго хранить записи журнала и связанные с ними изображения. Сами события и снимки можно хранить разное количество дней.</p>
+    <div class="form-grid">
+      <div class="form-row">
+        <label>Сколько дней хранить события</label>
+        <input type="number" min="1" name="event_retention_days" value="{{ config.retention.event_retention_days }}">
+        <div class="field-help">После этого срока записи журнала будут считаться устаревшими и смогут удаляться автоматически.</div>
+      </div>
+      <div class="form-row">
+        <label>Сколько дней хранить фото</label>
+        <input type="number" min="1" name="snapshot_retention_days" value="{{ config.retention.snapshot_retention_days }}">
+        <div class="field-help">Фото можно хранить меньше, чем сами события. Тогда история проходов останется, а старые изображения будут очищены.</div>
+      </div>
+      <div class="form-row">
+        <label>Удалять старые события</label>
+        <select name="delete_events_enabled">
+          <option value="1" {% if config.retention.delete_events_enabled %}selected{% endif %}>Да</option>
+          <option value="0" {% if not config.retention.delete_events_enabled %}selected{% endif %}>Нет</option>
+        </select>
+        <div class="field-help">Если выбрать «Да», приложение будет автоматически очищать устаревшие записи журнала по политике хранения.</div>
+      </div>
+      <div class="form-row">
+        <label>Удалять старые фото</label>
+        <select name="delete_snapshots_enabled">
+          <option value="1" {% if config.retention.delete_snapshots_enabled %}selected{% endif %}>Да</option>
+          <option value="0" {% if not config.retention.delete_snapshots_enabled %}selected{% endif %}>Нет</option>
+        </select>
+        <div class="field-help">Если выбрать «Да», старые изображения событий будут автоматически удаляться с диска по текущему сроку хранения фото.</div>
+      </div>
+      <div class="form-row">
+        <label>Интервал очистки, минут</label>
+        <input type="number" min="60" name="cleanup_interval_minutes" value="{{ config.retention.cleanup_interval_minutes }}">
+        <div class="field-help">Это периодичность фоновой проверки. Например, `1440` минут — один раз в сутки приложение проверит, нужно ли удалять старые события и снимки.</div>
+      </div>
+    </div>
+
+    <h3>Сохранение фото</h3>
+    <p class="field-help">Эти настройки определяют, когда приложение должно сохранять кадры событий в локальный архив.</p>
+    <div class="form-grid">
+      <div class="form-row">
+        <label>Сохранять фото успешных проходов</label>
+        <select name="save_snapshots_for_granted">
+          <option value="1" {% if config.journal.save_snapshots_for_granted %}selected{% endif %}>Да</option>
+          <option value="0" {% if not config.journal.save_snapshots_for_granted %}selected{% endif %}>Нет</option>
+        </select>
+        <div class="field-help">Полезно, если вы хотите видеть полный журнал проходов с подтверждающими изображениями.</div>
+      </div>
+      <div class="form-row">
+        <label>Сохранять фото остальных событий прохода</label>
+        <select name="save_snapshots_for_denied">
+          <option value="1" {% if config.journal.save_snapshots_for_denied %}selected{% endif %}>Да</option>
+          <option value="0" {% if not config.journal.save_snapshots_for_denied %}selected{% endif %}>Нет</option>
+        </select>
+        <div class="field-help">Подходит для случаев, когда нужно видеть не только успешные проходы, но и отказы или несопоставленные события.</div>
+      </div>
+    </div>
+
+    <h3>Отображение журнала</h3>
+    <p class="field-help">Эти параметры влияют только на интерфейс журнала и не меняют сами данные в базе.</p>
+    <div class="form-grid">
+      <div class="form-row">
+        <label>Событий на странице</label>
+        <input type="number" min="10" max="500" name="events_per_page" value="{{ config.journal.events_per_page }}">
+        <div class="field-help">Чем больше значение, тем длиннее будет страница журнала и тем дольше она может загружаться.</div>
+      </div>
+      <div class="form-row">
+        <label>Показывать несопоставленные</label>
+        <select name="show_unmatched_events">
+          <option value="1" {% if config.journal.show_unmatched_events %}selected{% endif %}>Да</option>
+          <option value="0" {% if not config.journal.show_unmatched_events %}selected{% endif %}>Нет</option>
+        </select>
+        <div class="field-help">Несопоставленные события — это проходы, которые не удалось привязать к сотруднику в локальной базе.</div>
+      </div>
+      <div class="form-row">
+        <label>Часовой пояс</label>
+        <input type="text" name="timezone" value="{{ config.server.timezone }}">
+        <div class="field-help">Используется для отображения локального времени в интерфейсе и служебных задачах.</div>
+      </div>
+      <div class="form-row">
+        <label>Срок свежести статусов панелей, минут</label>
+        <input type="number" min="1" name="panel_health_interval_minutes" value="{{ config.server.panel_health_interval_minutes or 5 }}">
+        <div class="field-help">Если данные о панели старше этого срока, интерфейс считает их устаревшими и обновляет кэш при следующем открытии страницы админки.</div>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit">Сохранить настройки</button>
+      <a class="button secondary" href="/settings">Сбросить форму</a>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h3 style="margin-top:0;">Ручное обслуживание</h3>
+  <p class="muted">Эта команда немедленно применит текущую политику удаления к журналу и снимкам.</p>
+  <form method="post" action="/cleanup/run">
+    <button class="secondary" type="submit">Запустить очистку сейчас</button>
+  </form>
+</section>
+{% endblock %}

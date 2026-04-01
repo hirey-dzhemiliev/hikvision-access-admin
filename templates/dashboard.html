@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid">
+  <div class="card"><div class="muted">Активных сотрудников</div><div class="metric">{{ stats.employees }}</div></div>
+  <div class="card"><div class="muted">Активных панелей</div><div class="metric">{{ stats.panels }}</div></div>
+  <div class="card"><div class="muted">Событий сегодня</div><div class="metric">{{ stats.events_today }}</div></div>
+  <div class="card"><div class="muted">Нужна синхронизация</div><div class="metric">{{ unsynced_employees|length }}</div></div>
+</section>
+
+<section class="grid">
+  <div class="card">
+    <h3 style="margin-top:0;">Быстрые действия</h3>
+    <div class="quick-actions">
+      <a class="button" href="/employees/new"><i class="material-icons">person_add</i>Добавить сотрудника</a>
+      <a class="button secondary" href="/panels/new"><i class="material-icons">add_circle_outline</i>Добавить панель</a>
+      <a class="button secondary" href="/sync"><i class="material-icons">sync_alt</i>Синхронизация</a>
+      <a class="button secondary" href="/discrepancies"><i class="material-icons">warning_amber</i>Расхождения</a>
+      <a class="button secondary" href="/journal"><i class="material-icons">fact_check</i>Журнал</a>
+      <a class="button secondary" href="/sync/runs"><i class="material-icons">history</i>История sync</a>
+    </div>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0;">Состояние панелей</h3>
+    {% if panel_states %}
+    <div class="stack">
+      {% for item in panel_states %}
+      {% set dot_class = 'ok' if item.state == 'ok' else ('danger' if item.state == 'error' else 'warn') %}
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="state-dot {{ dot_class }}"></span>
+          <strong>{{ item.name }}</strong>
+          <span class="pill {{ dot_class }}">{{ item.state or "нет данных" }}</span>
+        </div>
+        <div class="muted" style="padding-left:16px;">{{ item.host }}</div>
+        {% if item.message %}<div class="muted" style="padding-left:16px;">{{ human_hik_error(item.message) }}</div>{% endif %}
+        {% if item.updated_at %}<div class="muted" style="padding-left:16px;font-size:.85rem;">Проверено: {{ item.updated_at }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">Пока нет данных по состоянию панелей.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="grid">
+  <div class="card">
+    <h3 style="margin-top:0;">Последние синхронизации</h3>
+    {% if sync_runs %}
+    <div class="stack">
+      {% for item in sync_runs %}
+      <div>
+        <strong>#{{ item.id }}</strong>
+        <span class="pill {{ 'ok' if item.status == 'ok' else ('error' if item.status == 'error' else 'unknown') }}">{{ human_sync_status(item.status) }}</span>
+        <div class="muted">{{ item.started_at }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">Пока нет запусков синхронизации.</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0;">Последние ошибки sync</h3>
+    {% if sync_errors %}
+    <div class="stack">
+      {% for item in sync_errors %}
+      <div class="notice error">
+        <strong>{{ item.panel_name }}</strong>
+        <div class="muted">{{ item.employee_id or "—" }} · {{ human_sync_action(item.action) }}</div>
+        <div class="field-help">{{ human_hik_error(item.message) }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">Последних ошибок синхронизации нет.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="grid">
+  <div class="card">
+    <h3 style="margin-top:0;">Кто заходил сегодня</h3>
+    {% if today_events %}
+    <div class="stack">
+      {% for row in today_events %}
+      <div>
+        <strong>{{ row.employee_name_snapshot or row.employee_id or "Не сопоставлен" }}</strong>
+        <div class="muted">{{ row.panel_name }} · {{ row.event_time }}</div>
+        <div class="muted">{{ human_method(row.unlock_method) }} · {{ human_result(row.result) }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">Сегодня проходов пока не было.</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0;">Кого стоит синхронизировать</h3>
+    {% if unsynced_employees %}
+    <div class="stack">
+      {% for employee in unsynced_employees %}
+      <div>
+        <strong>{{ employee.first_name }} {{ employee.last_name }}</strong>
+        <div class="muted">ID {{ employee.employee_id }}{% if employee.room_number %} · комната {{ employee.room_number }}{% endif %}</div>
+        <div class="actions">
+          <a class="button secondary" href="/employees/{{ employee.id }}/edit">Открыть карточку</a>
+          <a class="button secondary" href="/sync?employee_id={{ employee.employee_id }}">Синхронизировать</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">Все активные сотрудники сейчас выглядят синхронизированными по доступным панелям.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card">
+  <h3 style="margin-top:0;">Последние события</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Время</th>
+        <th>Панель</th>
+        <th>Сотрудник</th>
+        <th>Способ</th>
+        <th>Результат</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in events %}
+      <tr>
+        <td>{{ row.event_time | format_dt }}</td>
+        <td><a href="/panels/{{ row.panel_id }}">{{ row.panel_name }}</a></td>
+        <td>
+          {% if row.employee_db_id %}
+          <a href="/employees/{{ row.employee_db_id }}/edit">{{ row.employee_name_snapshot or row.employee_id }}</a>
+          {% else %}
+          {{ row.employee_name_snapshot or row.employee_id or "Не сопоставлен" }}
+          {% endif %}
+        </td>
+        <td>{{ human_method(row.unlock_method) }}</td>
+        <td><span class="pill {{ row.result or 'unknown' }}">{{ human_result(row.result) }}</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">Событий пока нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

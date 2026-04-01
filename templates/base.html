@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} · {{ app_name }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  {% if ctx.user %}
+  {% set _path = ctx.environ.get('PATH_INFO', '/') %}
+  <nav class="app-nav">
+    <div class="nav-wrapper container">
+      <a href="/" class="brand-logo">Access Admin</a>
+      <a href="#" data-target="mobile-nav" class="sidenav-trigger"><i class="material-icons">menu</i></a>
+      <ul class="right hide-on-med-and-down">
+        <li><a href="/employees" {% if _path.startswith('/employees') %}class="nav-active"{% endif %}>Сотрудники</a></li>
+        <li><a href="/panels" {% if _path.startswith('/panels') %}class="nav-active"{% endif %}>Панели</a></li>
+        <li><a href="/sync" {% if _path.startswith('/sync') %}class="nav-active"{% endif %}>Синхронизация</a></li>
+        <li><a href="/discrepancies" {% if _path.startswith('/discrepancies') %}class="nav-active"{% endif %}>Расхождения</a></li>
+        <li><a href="/journal" {% if _path.startswith('/journal') %}class="nav-active"{% endif %}>Журнал</a></li>
+        <li><a href="/settings" {% if _path.startswith('/settings') %}class="nav-active"{% endif %}>Настройки</a></li>
+        <li><a href="/logout">Выход</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <ul class="sidenav" id="mobile-nav">
+    <li>
+      <div class="user-view white-text">
+        <span class="name">{{ ctx.user }}</span>
+        <span class="email">Локальная админка</span>
+      </div>
+    </li>
+    <li><a href="/"><i class="material-icons">dashboard</i>Главная</a></li>
+    <li><a href="/employees"><i class="material-icons">badge</i>Сотрудники</a></li>
+    <li><a href="/panels"><i class="material-icons">door_front</i>Панели</a></li>
+    <li><a href="/sync"><i class="material-icons">sync_alt</i>Синхронизация</a></li>
+    <li><a href="/sync/runs"><i class="material-icons">history</i>История sync</a></li>
+    <li><a href="/discrepancies"><i class="material-icons">warning</i>Расхождения</a></li>
+    <li><a href="/journal"><i class="material-icons">fact_check</i>Журнал</a></li>
+    <li><a href="/settings"><i class="material-icons">tune</i>Настройки</a></li>
+    <li><a href="/logout"><i class="material-icons">logout</i>Выход</a></li>
+  </ul>
+  {% endif %}
+
+  <div class="shell">
+    {% if ctx.user %}
+    {% if flash %}
+    <section class="notice {% if flash_type %}{{ flash_type }}{% endif %}" style="margin-bottom:16px;" id="flash-notice">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <span>{{ flash }}</span>
+        <button type="button" class="notice-dismiss" data-dismiss="flash" title="Закрыть">
+          <i class="material-icons">close</i>
+        </button>
+      </div>
+    </section>
+    {% endif %}
+    <section class="hero">
+      <h1>{{ title }}</h1>
+    </section>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

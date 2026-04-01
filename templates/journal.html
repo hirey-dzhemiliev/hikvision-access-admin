@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid">
+  <div class="card"><div class="muted">Всего событий</div><div class="metric">{{ stats.total_events }}</div></div>
+  <div class="card"><div class="muted">Снимков</div><div class="metric">{{ stats.photos_count }}</div></div>
+  <div class="card"><div class="muted">Несопоставленных</div><div class="metric">{{ stats.unmatched_events }}</div></div>
+</section>
+
+<section class="card">
+  <div class="actions" style="margin-top:0;">
+    <a class="button {% if quick != 'today' %}secondary{% endif %}" href="/journal?quick=today">Сегодня</a>
+    <a class="button {% if quick != 'week' %}secondary{% endif %}" href="/journal?quick=week">7 дней</a>
+    <a class="button {% if quick != 'granted' %}secondary{% endif %}" href="/journal?quick=granted">Только успешные</a>
+    <a class="button {% if quick != 'denied' %}secondary{% endif %}" href="/journal?quick=denied">Только отказы</a>
+    <a class="button {% if quick != 'unknown' %}secondary{% endif %}" href="/journal?quick=unknown">Несопоставленные</a>
+    <a class="button secondary" href="/journal">Сбросить</a>
+  </div>
+  <div class="field-help">Это журнал проходов сотрудников. Технические и системные события сюда не выводятся.</div>
+</section>
+
+<section class="card">
+  <form method="get" class="form-grid">
+    <div class="form-row">
+      <label>Сотрудник</label>
+      <input type="text" name="employee" value="{{ filters.employee }}">
+    </div>
+    <div class="form-row">
+      <label>Панель</label>
+      <select name="panel_id">
+        <option value="">Все</option>
+        {% for panel in panels %}
+        <option value="{{ panel.id }}" {% if filters.panel_id == panel.id %}selected{% endif %}>{{ panel.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Результат</label>
+      <select name="result">
+        <option value="">Все</option>
+        <option value="granted" {% if filters.result == 'granted' %}selected{% endif %}>Успешно</option>
+        <option value="denied" {% if filters.result == 'denied' %}selected{% endif %}>Отказ</option>
+        <option value="unknown" {% if filters.result == 'unknown' %}selected{% endif %}>Не определено</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Способ</label>
+      <select name="unlock_method">
+        <option value="">Все</option>
+        <option value="face" {% if filters.unlock_method == 'face' %}selected{% endif %}>Лицо</option>
+        <option value="card" {% if filters.unlock_method == 'card' %}selected{% endif %}>Карта</option>
+        <option value="remote" {% if filters.unlock_method == 'remote' %}selected{% endif %}>Удаленно</option>
+        <option value="qrCode" {% if filters.unlock_method == 'qrCode' %}selected{% endif %}>QR</option>
+        <option value="password" {% if filters.unlock_method == 'password' %}selected{% endif %}>Пароль</option>
+        <option value="unknown" {% if filters.unlock_method == 'unknown' %}selected{% endif %}>Не определено</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Дата с</label>
+      <input type="date" name="date_from" value="{{ filters.date_from }}">
+    </div>
+    <div class="form-row">
+      <label>Дата по</label>
+      <input type="date" name="date_to" value="{{ filters.date_to }}">
+    </div>
+    <div class="form-row">
+      <label>Показывать несопоставленные</label>
+      <select name="show_unmatched">
+        <option value="1" {% if filters.show_unmatched in ['1', 1, true] %}selected{% endif %}>Да</option>
+        <option value="0" {% if filters.show_unmatched in ['0', 0, false] %}selected{% endif %}>Нет</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>&nbsp;</label>
+      <div class="actions" style="margin-top:0;">
+        <button type="submit">Применить</button>
+        <a class="button secondary" href="/journal">Сбросить</a>
+      </div>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Время</th>
+        <th>Панель</th>
+        <th>Сотрудник</th>
+        <th>Комната</th>
+        <th>Способ</th>
+        <th>Результат</th>
+        <th>Фото</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.event_time | format_dt }}</td>
+        <td>
+          <div class="table-cell-stack">
+            <a href="/panels/{{ row.panel_id }}"><strong>{{ row.panel_name }}</strong></a>
+            <a class="muted" href="/journal?panel_id={{ row.panel_id }}">фильтр по панели</a>
+          </div>
+        </td>
+        <td>
+          <div class="table-cell-stack">
+          {% if row.employee_db_id %}
+          <a href="/employees/{{ row.employee_db_id }}/edit"><strong>{{ row.employee_name_snapshot or row.employee_id }}</strong></a>
+          {% else %}
+          <strong>{{ row.employee_name_snapshot or row.employee_id or "Не сопоставлен" }}</strong>
+          {% endif %}
+          {% if row.employee_id and row.employee_name_snapshot != row.employee_id %}
+          <a class="muted" href="/journal?employee={{ row.employee_id }}">ID {{ row.employee_id }}</a>
+          {% endif %}
+          </div>
+        </td>
+        <td>{{ row.room_number_snapshot or "—" }}</td>
+        <td>{{ human_method(row.unlock_method) }}</td>
+        <td>
+          <span class="pill {{ row.result or 'unknown' }}">{{ human_result(row.result) }}</span>
+        </td>
+        <td>
+          <div class="table-media">
+            {% if row.snapshot_path %}
+            <img class="thumb" src="/media/{{ row.snapshot_path }}" alt="snapshot">
+            {% else %}
+            <span class="muted">нет</span>
+            {% endif %}
+          </div>
+        </td>
+        <td><a href="/journal/{{ row.id }}">Подробнее</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="muted">Событий пока нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

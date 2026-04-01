@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block content %}
+{% set bulk = bulk_settings if bulk_settings is defined else {
+  "time_zone": "CST-3:00:00",
+  "time_display_format": "dd-MM-yyyy hh:mm",
+  "time_mode": "manual",
+  "manual_time": "",
+  "ntp_server": "",
+  "ntp_port": 123,
+  "ntp_interval": 60,
+  "face_auth_enabled": 1
+} %}
+{% set enabled_count = enabled_panels_count if enabled_panels_count is defined else 0 %}
+<section class="card">
+  <div class="actions section-toolbar">
+    <a class="button" href="/panels/new">Новая панель</a>
+  </div>
+  <form method="post" class="stack" data-time-settings-form>
+    <input type="hidden" name="selected_panel_ids" id="selected-panel-ids" value="">
+    <section class="settings-group">
+      <h3 class="settings-group-title">Общие настройки</h3>
+      <p class="settings-group-text">Эти параметры будут сохранены и применены только к отмеченным панелям.</p>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>Часовой пояс</label>
+          <select name="time_zone">
+            {% for option in panel_timezone_choices %}
+            <option value="{{ option.value }}" {% if bulk.time_zone == option.value %}selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Формат времени</label>
+          <select name="time_display_format">
+            {% for fmt in ['MM/dd/yyyy hh:mm', 'dd-MM-yyyy hh:mm', 'MM-dd-yyyy hh:mm', 'yyyy-MM-dd hh:mm'] %}
+            <option value="{{ fmt }}" {% if bulk.time_display_format == fmt %}selected{% endif %}>{{ fmt }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Режим времени</label>
+          <select name="time_mode" data-time-mode-select>
+            <option value="manual" {% if bulk.time_mode == 'manual' %}selected{% endif %}>Ручной</option>
+            <option value="NTP" {% if bulk.time_mode == 'NTP' %}selected{% endif %}>NTP</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-group" data-manual-time-section>
+      <h3 class="settings-group-title">Ручная настройка времени</h3>
+      <p class="settings-group-text">Показывается только для ручного режима.</p>
+      <div class="form-grid">
+        <div class="form-row" data-manual-time-row>
+          <label>Ручное время</label>
+          <input type="datetime-local" step="1" name="manual_time" value="{{ bulk.manual_time[:19] if bulk.manual_time else '' }}">
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-group" data-ntp-section>
+      <h3 class="settings-group-title">Синхронизация времени по NTP</h3>
+      <p class="settings-group-text">Показывается только для режима NTP.</p>
+      <div class="form-grid">
+        <div class="form-row" data-ntp-row>
+          <label>NTP сервер</label>
+          <input type="text" name="ntp_server" value="{{ bulk.ntp_server }}">
+        </div>
+        <div class="form-row" data-ntp-row>
+          <label>NTP порт</label>
+          <input type="number" name="ntp_port" min="1" max="65535" value="{{ bulk.ntp_port }}">
+        </div>
+        <div class="form-row" data-ntp-row>
+          <label>Интервал синхронизации, минут</label>
+          <input type="number" name="ntp_interval" min="1" max="10080" value="{{ bulk.ntp_interval }}">
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-group">
+      <h3 class="settings-group-title">Контроль доступа</h3>
+      <p class="settings-group-text">Общие параметры аутентификации.</p>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>Аутентификация лица</label>
+          <select name="face_auth_enabled">
+            <option value="1" {% if bulk.face_auth_enabled %}selected{% endif %}>Включена</option>
+            <option value="0" {% if not bulk.face_auth_enabled %}selected{% endif %}>Выключена</option>
+          </select>
+        </div>
+      </div>
+    </section>
+    <section class="settings-group">
+      <h3 class="settings-group-title">Выбор панелей</h3>
+      <p class="settings-group-text">Отметь панели, к которым нужно применить эти настройки. Доступно включённых: {{ enabled_count }}.</p>
+      <div class="actions compact-actions" style="margin-top:0;">
+        <label class="selection-chip">
+          <input type="checkbox" id="panels-select-all">
+          <span>Выбрать все включённые панели</span>
+        </label>
+        <span class="muted" id="panels-selected-count">Выбрано: 0</span>
+      </div>
+      <div class="employee-card-grid" id="panel-selection-grid">
+        {% for panel in panels %}
+        <label class="card employee-card panel-pick {% if not panel.enabled %}is-disabled{% endif %}" data-panel-select-card style="cursor:pointer;">
+          <div class="employee-card-header">
+            <input type="checkbox" class="panel-select" value="{{ panel.id }}" {% if panel.enabled %}checked{% else %}disabled{% endif %}>
+            <div class="employee-card-title">
+              <strong>{{ panel.name }}</strong>
+              <span class="muted">{{ panel.host }}</span>
+              <span class="pill">{% if panel.enabled %}включена{% else %}выключена{% endif %}</span>
+            </div>
+          </div>
+        </label>
+        {% endfor %}
+      </div>
+    </section>
+    <div class="actions">
+      <button type="submit" id="panels-bulk-submit">Применить к выбранным панелям</button>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Имя</th>
+        <th>IP</th>
+        <th>Логин</th>
+        <th>Статус</th>
+        <th>Слушатель</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for panel in panels %}
+      {% set status = status_by_id.get(panel.id) %}
+      <tr>
+        <td>
+          <div class="table-cell-stack">
+            <a href="/panels/{{ panel.id }}"><strong>{{ panel.name }}</strong></a>
+            <span class="muted">Открыть карточку панели</span>
+          </div>
+        </td>
+        <td>{{ panel.host }}</td>
+        <td>{{ panel.username }}</td>
+        <td>{% if panel.enabled %}<span class="pill">включена</span>{% else %}<span class="pill">выключена</span>{% endif %}</td>
+        <td>
+          {% if status %}
+            {% set dot = 'ok' if status.state == 'ok' else ('danger' if status.state == 'error' else 'warn') %}
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span class="state-dot {{ dot }}"></span>
+              <span class="pill {{ dot }}">{{ status.state }}</span>
+            </div>
+            {% if status.message %}<div class="muted" style="margin-top:4px;">{{ human_hik_error(status.message) }}</div>{% endif %}
+            {% if status.updated_at %}<div class="muted" style="font-size:.85rem;">{{ status.updated_at }}</div>{% endif %}
+          {% else %}
+            <span class="muted">нет данных</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="table-actions">
+            <a class="button secondary icon-button" href="/sync?panel_id={{ panel.id }}" title="Синхронизировать" aria-label="Синхронизировать">
+              <i class="material-icons">sync</i>
+            </a>
+            <form class="inline" method="post" action="/panels/{{ panel.id }}/check">
+              <button class="secondary" type="submit">Проверить</button>
+            </form>
+            <a class="button secondary icon-button" href="/panels/{{ panel.id }}/edit" title="Редактировать" aria-label="Редактировать">
+              <i class="material-icons">edit</i>
+            </a>
+            <form class="inline" method="post" action="/panels/{{ panel.id }}/delete">
+              <button class="danger icon-button" type="submit" title="Удалить" aria-label="Удалить" data-confirm="Удалить панель из локальной конфигурации?">
+                <i class="material-icons">delete</i>
+              </button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">Панелей пока нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% endblock %}

@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block content %}
+{% if last_sync %}
+<section class="card sync-run-card {% if last_sync.tone == 'warn' %}warn{% endif %}">
+  <div class="section-heading">
+    <div>
+      <h3>Выполненные действия</h3>
+      <div class="field-help">
+        {% if last_sync.finished_at %}
+        Последняя синхронизация завершена {{ last_sync.finished_at|format_dt }}.
+        {% elif last_sync.started_at %}
+        Последняя синхронизация запущена {{ last_sync.started_at|format_dt }}.
+        {% else %}
+        Последний запуск синхронизации сохранён в журнале.
+        {% endif %}
+      </div>
+    </div>
+    <span class="pill {{ 'warn' if last_sync.tone == 'warn' else 'ok' }}">{{ human_sync_status(last_sync.status) }}</span>
+  </div>
+
+  <div class="inline-pills" style="margin:0 0 10px;">
+    <span class="mini-pill"><strong>{{ last_sync.summary.created }}</strong> создано</span>
+    <span class="mini-pill"><strong>{{ last_sync.summary.updated }}</strong> обновлено</span>
+    <span class="mini-pill"><strong>{{ last_sync.summary.deleted }}</strong> удалено</span>
+    <span class="mini-pill"><strong>{{ last_sync.summary.errors }}</strong> ошибок</span>
+  </div>
+
+  {% if last_sync.actions %}
+  <table>
+    <thead>
+      <tr>
+        <th>Панель</th>
+        <th>Сотрудник</th>
+        <th>Действие</th>
+        <th>Статус</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for action in last_sync.actions %}
+      <tr>
+        <td>{{ action.panel_name }}</td>
+        <td>{{ action.employee_id or "—" }}</td>
+        <td>{{ human_sync_action(action.action) }}</td>
+        <td><span class="pill {{ 'ok' if action.status == 'ok' else ('error' if action.status == 'error' else 'unknown') }}">{{ human_sync_status(action.status, action.message) }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="card">
+  <div class="section-heading">
+    <h3>Область синхронизации</h3>
+  </div>
+  <form method="post" action="/sync/preview" class="stack">
+    <div class="form-grid">
+      <div class="form-row" style="grid-column:1 / -1;">
+        <label>Панели для синхронизации</label>
+        <div class="actions compact-actions" style="margin-top:0;">
+          <label class="selection-chip compact">
+            <input type="checkbox" id="sync-panels-select-all">
+            <span>Все панели</span>
+          </label>
+          <span class="muted" id="sync-panels-selected-count">Выбрано: 0</span>
+        </div>
+        <div class="employee-card-grid" id="sync-panel-grid">
+          {% for panel in panels %}
+          {% set panel_checked = (not selected_panel_ids) or (panel.id in selected_panel_ids) %}
+          <label class="card employee-card panel-pick" style="cursor:pointer;">
+            <div class="employee-card-header">
+              <input type="checkbox" class="sync-panel-checkbox" value="{{ panel.id }}" {% if panel_checked %}checked{% endif %}>
+              <div class="employee-card-title">
+                <strong>{{ panel.name }}</strong>
+                <span class="muted">{{ panel.host }}</span>
+              </div>
+            </div>
+          </label>
+          {% endfor %}
+        </div>
+        <div class="field-help">Отметь панели, которые нужно проверить.</div>
+      </div>
+      <div class="form-row">
+        <label>Сотрудник</label>
+        <select id="sync-employee-select">
+          <option value="">Все активные сотрудники</option>
+          {% for employee in employees %}
+          <option value="{{ employee.employee_id }}" {% if employee.employee_id in selected_employee_ids %}selected{% endif %}>
+            {{ employee.employee_id }} · {{ employee.first_name }} {{ employee.last_name }}
+          </option>
+          {% endfor %}
+        </select>
+        <div class="field-help">Оставь пусто, чтобы проверить всех.</div>
+      </div>
+    </div>
+    <input type="hidden" name="panel_ids" id="sync-panel-ids" value="{{ selected_panel_ids|join(',') if selected_panel_ids else '' }}">
+    <input type="hidden" name="employee_ids" id="sync-employee-ids" value="{{ selected_employee_ids|join(',') if selected_employee_ids else '' }}">
+    <div class="actions">
+      <button type="submit">Проверить</button>
+      <a class="button secondary" href="/sync/runs">История sync</a>
+    </div>
+  </form>
+</section>
+
+{% if preview and not sync_result %}
+<section class="card compact-stack">
+  <div>
+    <h3 style="margin-top:0;">Предпросмотр</h3>
+    <p class="field-help">Ниже показаны изменения, которые будут отправлены на панели.</p>
+  </div>
+  {% for item in preview.panels %}
+  <section class="settings-group subtle-card">
+    <div class="section-heading">
+      <h4>{{ item.panel.name }} ({{ item.panel.host }})</h4>
+    </div>
+    {% if item.error %}
+    <p class="danger" style="margin:0;">{{ item.error }}</p>
+    {% else %}
+    <div class="inline-pills compact" style="margin-bottom:10px;">
+      <span class="mini-pill"><strong>{{ item.creates|length }}</strong> создать</span>
+      <span class="mini-pill"><strong>{{ item.updates|length }}</strong> обновить</span>
+      <span class="mini-pill"><strong>{{ item.deletes|length }}</strong> удалить</span>
+      {% if not item.creates and not item.updates and not item.deletes %}
+      <span class="mini-pill"><strong>0</strong> изменений</span>
+      {% endif %}
+    </div>
+    {% if item.creates %}
+    <h4>Создание</h4>
+    <ul class="list-compact">
+      {% for row in item.creates %}
+      <li>
+        {{ row.employee.employee_id }} · {{ row.employee.first_name }} {{ row.employee.last_name }}
+        {% if row.reasons %}<div class="field-help">{{ row.reasons|join(', ') }}</div>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if item.updates %}
+    <h4>Обновление</h4>
+    <ul class="list-compact">
+      {% for row in item.updates %}
+      <li>
+        {{ row.employee.employee_id }} · {{ row.employee.first_name }} {{ row.employee.last_name }}
+        {% if row.differences %}<div class="field-help">{{ row.differences|join(' · ') }}</div>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if item.deletes %}
+    <h4 class="danger">Удаление</h4>
+    <p class="field-help">Эти пользователи есть на панели, но не входят в активный локальный список.</p>
+    <ul class="list-compact">
+      {% for row in item.deletes %}
+      <li>
+        {{ row.employeeNo }} · {{ row.name or "Без имени" }}
+        {% if row.reasons %}<div class="field-help">{{ row.reasons|join(', ') }}</div>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% endif %}
+  </section>
+  {% endfor %}
+  <div class="soft-divider"></div>
+  <form method="post" action="/sync/apply" class="stack">
+    <input type="hidden" name="panel_ids" value="{{ selected_panel_ids|join(',') if selected_panel_ids else '' }}">
+    <input type="hidden" name="employee_ids" value="{{ selected_employee_ids|join(',') if selected_employee_ids else '' }}">
+    <div class="actions">
+      <button type="submit" {% if preview_has_deletes %}data-confirm="Применить синхронизацию? Будут удалены пользователи, которые не входят в активный локальный список."{% endif %}>Применить синхронизацию</button>
+    </div>
+  </form>
+</section>
+{% endif %}
+
+{% endblock %}

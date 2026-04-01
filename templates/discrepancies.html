@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid">
+  <div class="card">
+    <div class="muted">Сотрудников с расхождениями</div>
+    <div class="metric">{{ employee_issues|length }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Проблем только на панелях</div>
+    <div class="metric">{{ panel_only|length }}</div>
+  </div>
+</section>
+
+<section class="grid">
+  <div class="card">
+    <h3 style="margin-top:0;">Сотрудники с проблемами</h3>
+    {% if employee_issues %}
+    <div class="stack">
+      {% for row in employee_issues %}
+      <div class="notice warn">
+        <div><strong><a href="/employees/{{ row.employee.id }}/edit">{{ row.employee.first_name }} {{ row.employee.last_name }}</a></strong></div>
+        <div class="muted">ID {{ row.employee.employee_id }}{% if row.employee.room_number %} · комната {{ row.employee.room_number }}{% endif %}</div>
+        <div class="stack" style="margin-top:8px;">
+          {% for issue in row.issues %}
+          <div>
+            <strong>{{ issue.panel.name }}</strong>
+            <div class="field-help">{{ issue.message }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">По сотрудникам расхождений сейчас нет.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0;">Записи, требующие удаления с панелей</h3>
+    {% if panel_only %}
+    <div class="stack">
+      {% for row in panel_only %}
+      <div class="notice {% if row.type == 'panel_error' %}error{% else %}warn{% endif %}">
+        <div><strong>{{ row.panel.name }}</strong></div>
+        {% if row.type == 'panel_error' %}
+        <div class="field-help">{{ row.message }}</div>
+        {% else %}
+        <div class="muted">{{ row.employee_id }} · {{ row.name or "Без имени" }}</div>
+        <div class="field-help">{{ row.message }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">Лишних записей на панелях сейчас не найдено.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

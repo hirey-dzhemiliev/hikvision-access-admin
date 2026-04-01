@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <form method="post" class="stack" data-time-settings-form>
+    <section class="settings-group">
+      <h3 class="settings-group-title">Основное</h3>
+      <p class="settings-group-text">Подключение панели и её состояние в системе.</p>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>Название</label>
+          <input type="text" name="name" required value="{{ panel.name if panel else '' }}">
+        </div>
+        <div class="form-row">
+          <label>IP / host</label>
+          <input type="text" name="host" required value="{{ panel.host if panel else '' }}">
+        </div>
+        <div class="form-row">
+          <label>Логин</label>
+          <input type="text" name="username" required value="{{ panel.username if panel else '' }}">
+        </div>
+        <div class="form-row">
+          <label>Пароль {% if panel %}<span class="muted">(оставьте пустым, чтобы не менять)</span>{% endif %}</label>
+          <input type="password" name="password">
+        </div>
+        <div class="form-row">
+          <label>Статус</label>
+          <select name="enabled">
+            <option value="1" {% if not panel or panel.enabled %}selected{% endif %}>Включена</option>
+            <option value="0" {% if panel and not panel.enabled %}selected{% endif %}>Выключена</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-group">
+      <h3 class="settings-group-title">Настройки времени</h3>
+      <p class="settings-group-text">Часовой пояс, формат времени и режим синхронизации.</p>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>Часовой пояс</label>
+          {% set current_tz = panel.time_zone if panel and panel.time_zone else 'CST-3:00:00' %}
+          <select name="time_zone">
+            {% for option in panel_timezone_choices %}
+            <option value="{{ option.value }}" {% if current_tz == option.value %}selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Формат времени</label>
+          <select name="time_display_format">
+            {% set current_format = panel.time_display_format if panel and panel.time_display_format else 'MM/dd/yyyy hh:mm' %}
+            {% for fmt in ['MM/dd/yyyy hh:mm', 'dd-MM-yyyy hh:mm', 'MM-dd-yyyy hh:mm', 'yyyy-MM-dd hh:mm'] %}
+            <option value="{{ fmt }}" {% if current_format == fmt %}selected{% endif %}>{{ fmt }}</option>
+            {% endfor %}
+          </select>
+          <div class="field-help">Формат, в котором панель показывает дату и время.</div>
+        </div>
+        <div class="form-row">
+          <label>Режим времени</label>
+          <select name="time_mode" data-time-mode-select>
+            <option value="manual" {% if not panel or panel.time_mode == 'manual' %}selected{% endif %}>Ручной</option>
+            <option value="NTP" {% if panel and panel.time_mode == 'NTP' %}selected{% endif %}>NTP</option>
+          </select>
+          <div class="field-help">Ручной режим или синхронизация через NTP.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-group" data-manual-time-section>
+      <h3 class="settings-group-title">Ручная настройка времени</h3>
+      <p class="settings-group-text">Используется только если выбран ручной режим.</p>
+      <div class="form-grid">
+        <div class="form-row" data-manual-time-row>
+          <label>Ручное время</label>
+          {% set _mt_val = (panel.manual_time or '')[:19] if panel and panel.manual_time else '' %}
+          <input type="datetime-local" step="1" name="manual_time" value="{{ _mt_val }}">
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-group" data-ntp-section>
+      <h3 class="settings-group-title">Синхронизация времени по NTP</h3>
+      <p class="settings-group-text">Используется только если выбран режим NTP.</p>
+      <div class="form-grid">
+        <div class="form-row" data-ntp-row>
+          <label>NTP сервер</label>
+          <input type="text" name="ntp_server" value="{{ panel.ntp_server if panel else '' }}">
+          <div class="field-help">IP-адрес или доменное имя.</div>
+        </div>
+        <div class="form-row" data-ntp-row>
+          <label>NTP порт</label>
+          <input type="number" name="ntp_port" min="1" max="65535" value="{{ panel.ntp_port if panel else 123 }}">
+        </div>
+        <div class="form-row" data-ntp-row>
+          <label>Интервал синхронизации, минут</label>
+          <input type="number" name="ntp_interval" min="1" max="10080" value="{{ panel.ntp_interval if panel else 60 }}">
+          <div class="field-help">Интервал между обращениями к NTP-серверу.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-group">
+      <h3 class="settings-group-title">Контроль доступа</h3>
+      <p class="settings-group-text">Параметры аутентификации на панели.</p>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>Аутентификация лица</label>
+          <select name="face_auth_enabled">
+            <option value="1" {% if not panel or panel.face_auth_enabled %}selected{% endif %}>Включена</option>
+            <option value="0" {% if panel and not panel.face_auth_enabled %}selected{% endif %}>Выключена</option>
+          </select>
+          <div class="field-help">Включает или отключает вход по лицу.</div>
+        </div>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button type="submit">Сохранить</button>
+      <a class="button secondary" href="/panels">Назад</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

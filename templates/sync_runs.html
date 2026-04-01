@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid">
+  <div class="card">
+    <div class="muted">Запусков синхронизации</div>
+    <div class="metric">{{ runs|length }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Текущий запуск</div>
+    <div class="metric">{{ run.id if run else "—" }}</div>
+  </div>
+</section>
+
+<section class="grid">
+  <div class="card">
+    <h3 style="margin-top:0;">Последние запуски</h3>
+    <div class="stack">
+      {% for item in runs %}
+      <div class="notice {% if selected_run_id == item.id %}warn{% endif %}">
+        <div><strong><a href="/sync/runs?run_id={{ item.id }}">#{{ item.id }}</a></strong></div>
+        <div class="muted">{{ item.started_at }}</div>
+        <div class="muted">Статус: {{ human_sync_status(item.status) }}</div>
+        {% if item.summary_json %}
+        <details style="margin-top:4px;">
+          <summary class="field-help" style="cursor:pointer;">Итог</summary>
+          <pre style="margin:4px 0 0;font-size:.82rem;white-space:pre-wrap;word-break:break-all;color:var(--muted);">{{ item.summary_json }}</pre>
+        </details>
+        {% endif %}
+      </div>
+      {% else %}
+      <div class="muted">Запусков синхронизации пока нет.</div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0;">Детали запуска</h3>
+    {% if run %}
+    <div class="stack">
+      <div><strong>ID:</strong> {{ run.id }}</div>
+      <div><strong>Начало:</strong> {{ run.started_at }}</div>
+      <div><strong>Окончание:</strong> {{ run.finished_at or "—" }}</div>
+      <div><strong>Статус:</strong> <span class="pill {{ 'ok' if run.status == 'ok' else ('error' if run.status == 'error' else 'unknown') }}">{{ human_sync_status(run.status) }}</span></div>
+      {% if run.summary_json %}
+      <details>
+        <summary class="field-help" style="cursor:pointer;">Итог</summary>
+        <pre style="margin:4px 0 0;font-size:.82rem;white-space:pre-wrap;word-break:break-all;color:var(--muted);">{{ run.summary_json }}</pre>
+      </details>
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="muted">Выбери запуск слева, чтобы увидеть подробности.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card">
+  <form method="get" class="form-grid">
+    {% if selected_run_id %}<input type="hidden" name="run_id" value="{{ selected_run_id }}">{% endif %}
+    <div class="form-row">
+      <label>Панель</label>
+      <select name="panel_id">
+        <option value="">Все</option>
+        {% for panel in panels %}
+        <option value="{{ panel.id }}" {% if filters.panel_id == panel.id %}selected{% endif %}>{{ panel.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Сотрудник</label>
+      <input type="text" name="employee_id" value="{{ filters.employee_id }}">
+    </div>
+    <div class="form-row">
+      <label>Статус</label>
+      <select name="status">
+        <option value="">Все</option>
+        <option value="ok" {% if filters.status == 'ok' %}selected{% endif %}>Успешно</option>
+        <option value="error" {% if filters.status == 'error' %}selected{% endif %}>Ошибка</option>
+      </select>
+    </div>
+    <div class="actions">
+      <button type="submit">Фильтровать</button>
+      <a class="button secondary" href="/sync/runs{% if selected_run_id %}?run_id={{ selected_run_id }}{% endif %}">Сбросить</a>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h3 style="margin-top:0;">Действия по запуску</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Панель</th>
+        <th>Сотрудник</th>
+        <th>Действие</th>
+        <th>Статус</th>
+        <th>Сообщение</th>
+        <th>Время</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in actions %}
+      <tr>
+        <td>{{ item.panel_name }}</td>
+        <td>{{ item.employee_id or "—" }}</td>
+        <td>{{ human_sync_action(item.action) }}</td>
+        <td><span class="pill {{ 'ok' if item.status == 'ok' else ('error' if item.status == 'error' else 'unknown') }}">{{ human_sync_status(item.status, item.message) }}</span></td>
+        <td>{{ human_hik_error(item.message) }}</td>
+        <td>{{ item.created_at }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">Для этого запуска действий пока нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

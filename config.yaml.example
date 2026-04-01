@@ -1,0 +1,55 @@
+# Example configuration for local or containerized deployment.
+# Copy this file to config.yaml and change all secrets before first start.
+
+auth:
+  # Generate a long random value and replace it before production use.
+  secret_key: "replace-with-a-random-secret"
+  session_cookie_secure: false
+  users:
+    # Example admin account.
+    # Default password for the hash below: admin123
+    # Change it immediately after first start.
+    - username: "admin"
+      password_hash: "pbkdf2_sha256$390000$obB3zniPsF9kaAm+oUjfNA==$tJxfloyX+NFqVqLoLzIZkPiJmDNUwJGt2AsvjF/AsVc="
+      display_name: "Administrator"
+      is_active: true
+
+server:
+  # For Docker use 0.0.0.0, for local run 127.0.0.1 is enough.
+  host: "127.0.0.1"
+  port: 8080
+  threads: 8
+  timezone: "Europe/Simferopol"
+  # Freshness window for panel status and sync cache in the UI.
+  panel_health_interval_minutes: 5
+
+storage:
+  # Base storage paths. In Docker it is convenient to mount them into /data.
+  db_path: "/app/app.db"
+  employee_media_dir: "/app/media/employees"
+  event_media_dir: "/app/media/events"
+  # Optional bootstrap file for initial panel import.
+  bootstrap_panels_json: "/app/panels.json"
+
+retention:
+  # Journal retention policy.
+  event_retention_days: 365
+  snapshot_retention_days: 60
+  delete_events_enabled: true
+  delete_snapshots_enabled: true
+  # Cleanup worker interval in minutes.
+  cleanup_interval_minutes: 1440
+
+journal:
+  # Journal UI and snapshot behavior.
+  save_snapshots_for_granted: true
+  save_snapshots_for_denied: true
+  events_per_page: 50
+  show_unmatched_events: true
+
+logging:
+  # Rotating application log.
+  file: "/app/logs/app.log"
+  level: "INFO"
+  max_bytes: 5242880
+  backup_count: 5

@@ -1,0 +1,39 @@
+auth:
+  secret_key: "replace-with-a-random-secret"
+  users:
+    - username: "admin"
+      password_hash: "pbkdf2_sha256$390000$obB3zniPsF9kaAm+oUjfNA==$tJxfloyX+NFqVqLoLzIZkPiJmDNUwJGt2AsvjF/AsVc="
+      display_name: "Administrator"
+      is_active: true
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  threads: 8
+  timezone: "Europe/Simferopol"
+  panel_health_interval_minutes: 5
+
+storage:
+  db_path: "/data/app.db"
+  employee_media_dir: "/data/media/employees"
+  event_media_dir: "/data/media/events"
+  bootstrap_panels_json: "/data/panels.json"
+
+retention:
+  event_retention_days: 365
+  snapshot_retention_days: 60
+  delete_events_enabled: true
+  delete_snapshots_enabled: true
+  cleanup_interval_minutes: 1440
+
+journal:
+  save_snapshots_for_granted: true
+  save_snapshots_for_denied: true
+  events_per_page: 50
+  show_unmatched_events: true
+
+logging:
+  file: "/data/logs/app.log"
+  level: "INFO"
+  max_bytes: 5242880
+  backup_count: 5

@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid">
+  {% if panel_summary %}
+  <div class="card">
+    <div class="muted">Синхронизировано</div>
+    <div class="metric" style="font-size:1.6rem;">{{ panel_summary.synced }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Требует внимания</div>
+    <div class="metric" style="font-size:1.6rem;">{{ panel_summary.needs_attention }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Активных сотрудников</div>
+    <div class="metric" style="font-size:1.6rem;">{{ panel_summary.employees_total }}</div>
+  </div>
+  {% endif %}
+  <div class="card">
+    <div class="muted">Адрес</div>
+    <div class="metric" style="font-size:1.6rem;">{{ panel.host }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Логин</div>
+    <div class="metric" style="font-size:1.6rem;">{{ panel.username }}</div>
+  </div>
+  <div class="card">
+    <div class="muted">Health-check</div>
+    {% if panel_status and panel_status.state %}
+    {% set dot = 'ok' if panel_status.state == 'ok' else ('danger' if panel_status.state == 'error' else 'warn') %}
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+      <span class="state-dot {{ dot }}"></span>
+      <span class="metric" style="font-size:1.2rem;margin-top:0;">{{ panel_status.state }}</span>
+    </div>
+    {% if panel_status.message %}<div class="muted" style="margin-top:4px;">{{ human_hik_error(panel_status.message) }}</div>{% endif %}
+    {% else %}
+    <div class="metric" style="font-size:1.2rem;">нет данных</div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="grid">
+  <div class="card">
+    <h3 style="margin-top:0;">Быстрые действия</h3>
+    <div class="actions">
+      <a class="button" href="/sync?panel_id={{ panel.id }}">Проверить синхронизацию</a>
+      <form class="inline" method="post" action="/panels/{{ panel.id }}/check">
+        <button class="secondary" type="submit">Проверить панель</button>
+      </form>
+      <a class="button secondary" href="/panels/{{ panel.id }}/edit">Редактировать панель</a>
+      <a class="button secondary" href="/journal?panel_id={{ panel.id }}">Открыть журнал панели</a>
+    </div>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0;">Что будет при синхронизации</h3>
+    {% if preview and preview.panels %}
+    {% set summary = panel_sync_totals(preview.panels[0]) %}
+    <div class="stack">
+      <div><strong>{{ summary.creates }}</strong> будет создано</div>
+      <div><strong>{{ summary.updates }}</strong> будет обновлено</div>
+      <div><strong>{{ summary.deletes }}</strong> найдено только на панели</div>
+    </div>
+    <div class="field-help">Предпросмотр помогает заранее увидеть, что именно будет создано, обновлено или удалено на этой панели.</div>
+    {% else %}
+    <p class="muted">Не удалось получить предпросмотр синхронизации для этой панели.</p>
+    {% endif %}
+  </div>
+</section>
+
+{% if preview and preview.panels %}
+{% set item = preview.panels[0] %}
+<section class="grid">
+  <div class="card">
+    <h3 style="margin-top:0;">Будут созданы</h3>
+    {% if item.creates %}
+    <div class="stack">
+      {% for employee in item.creates[:8] %}
+      <div>
+        <strong>{{ employee.employee.first_name }} {{ employee.employee.last_name }}</strong>
+        <div class="muted">ID {{ employee.employee.employee_id }}{% if employee.employee.room_number %} · комната {{ employee.employee.room_number }}{% endif %}</div>
+        {% if employee.reasons %}<div class="field-help">{{ employee.reasons|join(', ') }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">Новых сотрудников для этой панели сейчас нет.</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0;">Будут обновлены</h3>
+    {% if item.updates %}
+    <div class="stack">
+      {% for row in item.updates[:8] %}
+      <div>
+        <strong>{{ row.employee.first_name }} {{ row.employee.last_name }}</strong>
+        <div class="muted">ID {{ row.employee.employee_id }}</div>
+        {% if row.differences %}<div class="field-help">{{ row.differences|join(' · ') }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">Расхождений по данным сотрудников сейчас нет.</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0;">Есть только на панели</h3>
+    {% if item.deletes %}
+    <div class="stack">
+      {% for row in item.deletes[:8] %}
+      <div>
+        <strong>{{ row.name or "Без имени" }}</strong>
+        <div class="muted">ID {{ row.employeeNo }}</div>
+        {% if row.reasons %}<div class="field-help">{{ row.reasons|join(', ') }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">Лишних пользователей на панели сейчас не найдено.</p>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+<section class="card">
+  <h3 style="margin-top:0;">Последние события панели</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Время</th>
+        <th>Сотрудник</th>
+        <th>Способ</th>
+        <th>Результат</th>
+        <th>Фото</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in events %}
+      <tr>
+        <td>{{ row.event_time | format_dt }}</td>
+        <td>
+          <div class="table-cell-stack">
+            {% if row.employee_db_id %}
+            <a href="/employees/{{ row.employee_db_id }}/edit"><strong>{{ row.employee_name_snapshot or row.employee_id }}</strong></a>
+            {% else %}
+            <strong>{{ row.employee_name_snapshot or row.employee_id or "Не сопоставлен" }}</strong>
+            {% endif %}
+            {% if row.room_number_snapshot %}<span class="muted">комната {{ row.room_number_snapshot }}</span>{% endif %}
+          </div>
+        </td>
+        <td>{{ human_method(row.unlock_method) }}</td>
+        <td><span class="pill {{ row.result or 'unknown' }}">{{ human_result(row.result) }}</span></td>
+        <td>
+          <div class="table-media">
+            {% if row.snapshot_path %}
+            <img class="thumb" src="/media/{{ row.snapshot_path }}" alt="snapshot">
+            {% else %}
+            <span class="muted">нет</span>
+            {% endif %}
+          </div>
+        </td>
+        <td><a href="/journal/{{ row.id }}">Подробнее</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">Событий по панели пока нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
