@@ -18,6 +18,7 @@ from admin_common import (
     PANEL_DEFAULT_TIMEZONE,
     PANEL_DEFAULT_TIME_FORMAT,
     PANEL_DEFAULT_TIME_MODE,
+    employee_display_name,
     employee_is_active,
     employee_state,
     ensure_dir,
@@ -199,6 +200,21 @@ class Database:
                 """,
                 (EMPLOYEE_STATE_ACTIVE, EMPLOYEE_STATE_DEACTIVATED),
             )
+            self.conn.execute(
+                """
+                UPDATE employees
+                SET room_number = '1'
+                WHERE room_number IS NULL OR TRIM(room_number) = ''
+                """
+            )
+            self.conn.execute(
+                """
+                UPDATE employees
+                SET card_number = NULL
+                WHERE card_number IS NOT NULL
+                  AND LOWER(TRIM(card_number)) IN ('', 'none', 'null')
+                """
+            )
 
     def ensure_panel_columns(self) -> None:
         with self._lock, self.conn:
@@ -283,7 +299,13 @@ class Database:
             "denied": denied,
         }
 
-    def list_employees(self, include_inactive: bool = False, search: str = "") -> list[sqlite3.Row]:
+    def list_employees(
+        self,
+        include_inactive: bool = False,
+        search: str = "",
+        sort_by: str = "name",
+        sort_dir: str = "asc",
+    ) -> list[sqlite3.Row]:
         sql = "SELECT * FROM employees"
         params: list[Any] = []
         clauses = []
@@ -297,13 +319,40 @@ class Database:
             escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             clauses.append(
                 "(employee_id LIKE ? ESCAPE '\\' OR first_name LIKE ? ESCAPE '\\'"
-                " OR last_name LIKE ? ESCAPE '\\' OR COALESCE(card_number,'') LIKE ? ESCAPE '\\')"
+                " OR last_name LIKE ? ESCAPE '\\' OR COALESCE(card_number,'') LIKE ? ESCAPE '\\'"
+                " OR COALESCE(room_number,'') LIKE ? ESCAPE '\\')"
             )
             pattern = f"%{escaped}%"
-            params.extend([pattern, pattern, pattern, pattern])
+            params.extend([pattern, pattern, pattern, pattern, pattern])
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
-        sql += " ORDER BY last_name, first_name, employee_id"
+        numeric_employee_id = (
+            "TRIM(COALESCE(employee_id, '')) <> '' "
+            "AND TRIM(COALESCE(employee_id, '')) NOT GLOB '*[^0-9]*'"
+        )
+        direction = "DESC" if str(sort_dir).lower() == "desc" else "ASC"
+        order_sql = {
+            "name": (
+                "LOWER(TRIM(COALESCE(first_name, '') || ' ' || COALESCE(last_name, ''))) "
+                f"{direction}, employee_id ASC"
+            ),
+            "employee_id": (
+                f"CASE WHEN {numeric_employee_id} THEN 0 ELSE 1 END ASC, "
+                f"CASE WHEN {numeric_employee_id} THEN CAST(TRIM(employee_id) AS INTEGER) END {direction}, "
+                f"LOWER(employee_id) {direction}, "
+                "LOWER(TRIM(COALESCE(first_name, '') || ' ' || COALESCE(last_name, ''))) ASC"
+            ),
+            "card_number": (
+                "CASE WHEN COALESCE(TRIM(card_number), '') = '' THEN 1 ELSE 0 END ASC, "
+                f"LOWER(COALESCE(card_number, '')) {direction}, "
+                "LOWER(TRIM(COALESCE(first_name, '') || ' ' || COALESCE(last_name, ''))) ASC"
+            ),
+            "status": (
+                "CASE WHEN lifecycle_state = 'active' THEN 0 ELSE 1 END "
+                f"{direction}, LOWER(TRIM(COALESCE(first_name, '') || ' ' || COALESCE(last_name, ''))) ASC"
+            ),
+        }.get(str(sort_by), None)
+        sql += " ORDER BY " + (order_sql or "LOWER(TRIM(COALESCE(first_name, '') || ' ' || COALESCE(last_name, ''))) ASC, employee_id ASC")
         with self._lock:
             return list(self.conn.execute(sql, params).fetchall())
 
@@ -397,6 +446,13 @@ class Database:
     def delete_employee(self, employee_pk: int) -> None:
         with self._lock, self.conn:
             self.conn.execute("DELETE FROM employees WHERE id = ?", (employee_pk,))
+
+    def update_employee_photo(self, employee_pk: int, photo_path: str | None) -> None:
+        with self._lock, self.conn:
+            self.conn.execute(
+                "UPDATE employees SET photo_path = ?, updated_at = ? WHERE id = ?",
+                (photo_path, now_utc_iso(), employee_pk),
+            )
 
     def list_panels(self, enabled_only: bool = False) -> list[sqlite3.Row]:
         sql = "SELECT * FROM panels"
@@ -511,9 +567,7 @@ class Database:
                     normalized["event_time"],
                     normalized.get("employee_id"),
                     employee["id"] if employee else None,
-                    normalized.get("employee_name") or (
-                        f"{employee['first_name']} {employee['last_name']}".strip() if employee else None
-                    ),
+                    normalized.get("employee_name") or (employee_display_name(employee) if employee else None),
                     normalized.get("room_number") or (employee["room_number"] if employee else None),
                     normalized.get("card_number") or (employee["card_number"] if employee else None),
                     normalized["event_kind"],

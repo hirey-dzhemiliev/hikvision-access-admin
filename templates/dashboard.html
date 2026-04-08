@@ -101,8 +101,8 @@
     <div class="stack">
       {% for employee in unsynced_employees %}
       <div>
-        <strong>{{ employee.first_name }} {{ employee.last_name }}</strong>
-        <div class="muted">ID {{ employee.employee_id }}{% if employee.room_number %} · комната {{ employee.room_number }}{% endif %}</div>
+        <strong>{{ employee_display_name(employee) }}</strong>
+        <div class="muted">ID {{ employee.employee_id }} · комната {{ employee.room_number or '1' }}</div>
         <div class="actions">
           <a class="button secondary" href="/employees/{{ employee.id }}/edit">Открыть карточку</a>
           <a class="button secondary" href="/sync?employee_id={{ employee.employee_id }}">Синхронизировать</a>

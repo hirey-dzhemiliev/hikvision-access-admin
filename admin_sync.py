@@ -3,9 +3,11 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import re
 import sqlite3
 import threading
 import time
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -14,10 +16,12 @@ from admin_common import (
     EMPLOYEE_STATE_DEACTIVATED,
     EMPLOYEE_STATE_DELETED,
     ConfigManager,
+    employee_display_name,
     employee_is_active,
     employee_state,
     ensure_dir,
     now_local_iso,
+    panel_person_name,
     to_bool,
 )
 from admin_db import Database, row_to_panel_config
@@ -53,10 +57,10 @@ class HikvisionSyncService:
     def user_payload(self, employee: sqlite3.Row) -> dict[str, Any]:
         return {
             "employeeNo": employee["employee_id"],
-            "name": f"{employee['first_name']} {employee['last_name']}".strip(),
+            "name": panel_person_name(employee_display_name(employee)),
             "userType": "normal",
             "closeDelayEnabled": False,
-            "roomNo": employee["room_number"] or "",
+            "roomNo": employee["room_number"] or "1",
             "Valid": self.default_valid_payload(),
         }
 
@@ -214,8 +218,8 @@ class HikvisionSyncService:
         return bool(self._employee_differences(employee, panel_user))
 
     def _employee_differences(self, employee: sqlite3.Row, panel_user: dict[str, Any]) -> list[str]:
-        full_name = f"{employee['first_name']} {employee['last_name']}".strip()
-        room_number = employee["room_number"] or ""
+        full_name = panel_person_name(employee_display_name(employee))
+        room_number = employee["room_number"] or "1"
         panel_name = str(panel_user.get("name", "")).strip()
         room_field_present = "roomNo" in panel_user or "roomNumber" in panel_user
         panel_room = str(panel_user.get("roomNo") or panel_user.get("roomNumber") or "").strip()
@@ -308,7 +312,7 @@ class HikvisionSyncService:
         try:
             client.upload_face(
                 employee_no=employee["employee_id"],
-                name=f"{employee['first_name']} {employee['last_name']}".strip(),
+                name=panel_person_name(employee_display_name(employee)),
                 photo_path=str(photo_path),
             )
         except HikvisionApiError as exc:
@@ -414,7 +418,7 @@ class PanelEventListener(threading.Thread):
         self.config = config
         self.panel = panel_row
         self._stop_event = threading.Event()
-        self.event_media_dir = Path(config.get("storage", "event_media_dir", "media/events"))
+        self.event_media_dir = config.resolve_path("storage", "event_media_dir", "media/events")
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -462,15 +466,21 @@ class PanelEventListener(threading.Thread):
                     (normalized["result"] == "granted" and save_granted)
                     or (normalized["result"] != "granted" and save_denied)
                 )
-            elif "image/jpeg" in content_type and pending_event_id and pending_should_save_photo:
-                target = self._save_snapshot(pending_event_id, body)
+            elif "image/" in content_type and pending_event_id and pending_should_save_photo:
+                target = self._save_snapshot(pending_event_id, body, content_type)
                 self.db.attach_event_snapshot(pending_event_id, str(target.relative_to(self.event_media_dir)))
                 pending_event_id = None
                 pending_should_save_photo = False
 
-    def _save_snapshot(self, event_id: int, image_bytes: bytes) -> Path:
+    def _save_snapshot(self, event_id: int, image_bytes: bytes, content_type: str = "image/jpeg") -> Path:
         stamp = dt.datetime.now(dt.UTC).strftime("%Y/%m/%d")
-        target = self.event_media_dir / stamp / f"{self.panel['name']}-{event_id}.jpg"
+        extension = ".png" if "png" in content_type.lower() else ".jpg"
+        panel_name = str(self.panel["name"] or "").strip()
+        safe_panel_name = unicodedata.normalize("NFKD", panel_name).encode("ascii", "ignore").decode("ascii")
+        safe_panel_name = re.sub(r"[^A-Za-z0-9._-]+", "-", safe_panel_name).strip("-._")
+        if not safe_panel_name:
+            safe_panel_name = f"panel-{self.panel['id']}"
+        target = self.event_media_dir / stamp / f"{safe_panel_name}-{event_id}{extension}"
         ensure_dir(target.parent)
         target.write_bytes(image_bytes)
         return target
@@ -535,7 +545,7 @@ class CleanupWorker(threading.Thread):
                         if to_bool(self.config.get("retention", "delete_snapshots_enabled", True))
                         else 0,
                     )
-                    event_media_dir = Path(self.config.get("storage", "event_media_dir", "media/events"))
+                    event_media_dir = self.config.resolve_path("storage", "event_media_dir", "media/events")
                     for relative in set(filter(None, result["snapshot_paths"])):
                         target = event_media_dir / relative
                         if target.exists():
@@ -562,7 +572,7 @@ class PanelSyncCacheWorker(threading.Thread):
         self.config = config
         self.sync_service = sync_service or HikvisionSyncService(
             db,
-            Path(config.get("storage", "employee_media_dir", "media/employees")),
+            config.resolve_path("storage", "employee_media_dir", "media/employees"),
         )
         self._stop_event = threading.Event()
 

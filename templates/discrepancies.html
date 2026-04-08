@@ -18,8 +18,8 @@
     <div class="stack">
       {% for row in employee_issues %}
       <div class="notice warn">
-        <div><strong><a href="/employees/{{ row.employee.id }}/edit">{{ row.employee.first_name }} {{ row.employee.last_name }}</a></strong></div>
-        <div class="muted">ID {{ row.employee.employee_id }}{% if row.employee.room_number %} · комната {{ row.employee.room_number }}{% endif %}</div>
+        <div><strong><a href="/employees/{{ row.employee.id }}/edit">{{ employee_display_name(row.employee) }}</a></strong></div>
+        <div class="muted">ID {{ row.employee.employee_id }} · комната {{ row.employee.room_number or '1' }}</div>
         <div class="stack" style="margin-top:8px;">
           {% for issue in row.issues %}
           <div>

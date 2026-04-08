@@ -5,7 +5,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
   initFlashDismiss();
   initConfirmActions();
+  initLoginForm();
   initTimeSettingsForms();
+  initEmployeePhotoFields();
   initEmployeesPage();
   initPanelsPage();
   initSyncPage();
@@ -17,6 +19,26 @@ function initFlashDismiss() {
       const target = button.closest("#flash-notice");
       if (target) {
         target.remove();
+      }
+    });
+  });
+}
+
+function initLoginForm() {
+  const form = document.getElementById("login-form");
+  if (!form) {
+    return;
+  }
+  form.querySelectorAll("input").forEach(function (input) {
+    input.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter") {
+        return;
+      }
+      event.preventDefault();
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+      } else {
+        form.submit();
       }
     });
   });
@@ -149,6 +171,38 @@ function initEmployeesPage() {
     bulkForm.addEventListener("submit", syncSelection);
   }
   syncSelection();
+}
+
+function initEmployeePhotoFields() {
+  document.querySelectorAll("[data-photo-input]").forEach(function (input) {
+    const meta = input.closest(".form-row")?.querySelector("[data-photo-meta]");
+    if (!meta) {
+      return;
+    }
+    input.addEventListener("change", function () {
+      const file = input.files && input.files[0];
+      if (!file) {
+        meta.textContent = "Выбранный файл пока не загружен.";
+        return;
+      }
+      const sizeKb = Math.max(1, Math.round(file.size / 1024));
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        const image = new Image();
+        image.onload = function () {
+          meta.textContent = "Файл: " + file.name + " · " + image.width + "×" + image.height + " px · " + sizeKb + " KB";
+        };
+        image.onerror = function () {
+          meta.textContent = "Файл: " + file.name + " · " + sizeKb + " KB";
+        };
+        image.src = String(event.target?.result || "");
+      };
+      reader.onerror = function () {
+        meta.textContent = "Файл: " + file.name + " · " + sizeKb + " KB";
+      };
+      reader.readAsDataURL(file);
+    });
+  });
 }
 
 function initPanelsPage() {

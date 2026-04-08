@@ -75,8 +75,8 @@
     <div class="stack">
       {% for employee in item.creates[:8] %}
       <div>
-        <strong>{{ employee.employee.first_name }} {{ employee.employee.last_name }}</strong>
-        <div class="muted">ID {{ employee.employee.employee_id }}{% if employee.employee.room_number %} · комната {{ employee.employee.room_number }}{% endif %}</div>
+        <strong>{{ employee_display_name(employee.employee) }}</strong>
+        <div class="muted">ID {{ employee.employee.employee_id }} · комната {{ employee.employee.room_number or '1' }}</div>
         {% if employee.reasons %}<div class="field-help">{{ employee.reasons|join(', ') }}</div>{% endif %}
       </div>
       {% endfor %}
@@ -91,7 +91,7 @@
     <div class="stack">
       {% for row in item.updates[:8] %}
       <div>
-        <strong>{{ row.employee.first_name }} {{ row.employee.last_name }}</strong>
+        <strong>{{ employee_display_name(row.employee) }}</strong>
         <div class="muted">ID {{ row.employee.employee_id }}</div>
         {% if row.differences %}<div class="field-help">{{ row.differences|join(' · ') }}</div>{% endif %}
       </div>

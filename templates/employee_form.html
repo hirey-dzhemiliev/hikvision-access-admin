@@ -8,23 +8,20 @@
     <div class="form-grid">
       <div class="form-row">
         <label>Идентификатор сотрудника</label>
-        <input type="text" name="employee_id" required value="{{ employee.employee_id if employee else '' }}">
+        <input type="text" name="employee_id" required value="{{ (employee.employee_id or '') if employee else '' }}">
       </div>
       <div class="form-row">
-        <label>Имя</label>
-        <input type="text" name="first_name" required value="{{ employee.first_name if employee else '' }}">
-      </div>
-      <div class="form-row">
-        <label>Фамилия</label>
-        <input type="text" name="last_name" required value="{{ employee.last_name if employee else '' }}">
+        <label>Имя на панели</label>
+        <input type="text" name="full_name" required maxlength="32" value="{{ employee_display_name(employee) if employee else '' }}">
+        <div class="field-help">На панели используется одно поле имени с ограничением до 32 символов.</div>
       </div>
       <div class="form-row">
         <label>Номер комнаты</label>
-        <input type="text" name="room_number" value="{{ employee.room_number if employee else '' }}">
+        <input type="text" name="room_number" value="{{ (employee.room_number or '1') if employee else '1' }}">
       </div>
       <div class="form-row">
         <label>Номер карты</label>
-        <input type="text" name="card_number" value="{{ employee.card_number if employee else '' }}">
+        <input type="text" name="card_number" value="{{ (employee.card_number or '') if employee else '' }}">
       </div>
       <div class="form-row">
         <label>Статус</label>
@@ -37,18 +34,22 @@
       </div>
       <div class="form-row">
         <label>Фото</label>
-        <input type="file" name="photo" accept=".jpg,.jpeg,.png" style="border:none !important;line-height:22px !important;font-size:14px !important;">
+        <input type="file" name="photo" accept=".jpg,.jpeg,.png" data-photo-input style="border:none !important;line-height:22px !important;font-size:14px !important;">
+        <div class="field-help" data-photo-meta>Выбранный файл пока не загружен.</div>
         <div class="field-help">Рекомендация для фото лица: JPEG/PNG, лицо анфас, один человек в кадре, без сильных теней. Лучше использовать изображение не меньше 600×800 px, чтобы панель уверенно строила биометрию.</div>
       </div>
     </div>
     <div class="form-row">
       <label>Комментарий</label>
-      <textarea name="comment">{{ employee.comment if employee else '' }}</textarea>
+      <textarea name="comment">{{ (employee.comment or '') if employee else '' }}</textarea>
     </div>
     {% if employee and employee.photo_path %}
     <div class="form-row">
       <label>Текущее фото</label>
-      <img class="thumb" src="/media/{{ employee.photo_path }}" alt="photo">
+      <div class="stack" style="justify-items:start;">
+        <img class="thumb" src="/media/{{ employee.photo_path }}" alt="photo">
+        <button class="secondary" type="submit" formaction="/employees/{{ employee.id }}/photo-delete" formmethod="post" formnovalidate>Удалить фото</button>
+      </div>
     </div>
     {% endif %}
     <div class="actions">
@@ -56,7 +57,7 @@
       <a class="button secondary" href="/employees">Назад</a>
       {% if employee %}
       <a class="button secondary" href="/sync?employee_id={{ employee.employee_id }}">Синхронизировать сотрудника</a>
-      <button class="danger" type="submit" formaction="/employees/{{ employee.id }}/delete" formmethod="post" data-confirm="Удалить сотрудника из локальной БД? На следующей синхронизации он будет удалён и с панелей.">Удалить</button>
+      <button class="danger" type="submit" formaction="/employees/{{ employee.id }}/delete" formmethod="post" formnovalidate data-confirm="Удалить сотрудника из локальной БД? На следующей синхронизации он будет удалён и с панелей.">Удалить</button>
       {% endif %}
     </div>
   </form>

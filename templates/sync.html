@@ -87,7 +87,7 @@
           <option value="">Все активные сотрудники</option>
           {% for employee in employees %}
           <option value="{{ employee.employee_id }}" {% if employee.employee_id in selected_employee_ids %}selected{% endif %}>
-            {{ employee.employee_id }} · {{ employee.first_name }} {{ employee.last_name }}
+            {{ employee.employee_id }} · {{ employee_display_name(employee) }}
           </option>
           {% endfor %}
         </select>
@@ -130,7 +130,7 @@
     <ul class="list-compact">
       {% for row in item.creates %}
       <li>
-        {{ row.employee.employee_id }} · {{ row.employee.first_name }} {{ row.employee.last_name }}
+        {{ row.employee.employee_id }} · {{ employee_display_name(row.employee) }}
         {% if row.reasons %}<div class="field-help">{{ row.reasons|join(', ') }}</div>{% endif %}
       </li>
       {% endfor %}
@@ -141,7 +141,7 @@
     <ul class="list-compact">
       {% for row in item.updates %}
       <li>
-        {{ row.employee.employee_id }} · {{ row.employee.first_name }} {{ row.employee.last_name }}
+        {{ row.employee.employee_id }} · {{ employee_display_name(row.employee) }}
         {% if row.differences %}<div class="field-help">{{ row.differences|join(' · ') }}</div>{% endif %}
       </li>
       {% endfor %}

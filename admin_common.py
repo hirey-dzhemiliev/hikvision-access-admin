@@ -10,6 +10,7 @@ import os
 import re
 import threading
 import time
+import unicodedata
 import xml.etree.ElementTree as ET
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -39,6 +40,15 @@ EMPLOYEE_STATES = {
     EMPLOYEE_STATE_DEACTIVATED,
     EMPLOYEE_STATE_DELETED,
 }
+
+
+def source_value(source: Any, key: str, default: Any = None) -> Any:
+    if isinstance(source, dict):
+        return source.get(key, default)
+    try:
+        return source[key]  # type: ignore[index]
+    except (TypeError, KeyError, IndexError):
+        return default
 
 
 def hikvision_timezone_from_utc_offset(hours: int) -> str:
@@ -127,6 +137,86 @@ def employee_is_active(source: Any) -> bool:
     return employee_state(source) == EMPLOYEE_STATE_ACTIVE
 
 
+def employee_display_name(source: Any) -> str:
+    full_name = str(source_value(source, "full_name", "") or "").strip()
+    if full_name:
+        return full_name
+    first_name = str(source_value(source, "first_name", "") or "").strip()
+    last_name = str(source_value(source, "last_name", "") or "").strip()
+    combined = " ".join(part for part in [first_name, last_name] if part).strip()
+    if combined:
+        return combined
+    fallback = str(source_value(source, "employee_name_snapshot", "") or "").strip()
+    if fallback:
+        return fallback
+    return str(source_value(source, "employee_id", "") or "").strip()
+
+
+_CYRILLIC_TRANSLIT_MAP = {
+    "а": "a",
+    "б": "b",
+    "в": "v",
+    "г": "g",
+    "д": "d",
+    "е": "e",
+    "ё": "e",
+    "ж": "zh",
+    "з": "z",
+    "и": "i",
+    "й": "y",
+    "к": "k",
+    "л": "l",
+    "м": "m",
+    "н": "n",
+    "о": "o",
+    "п": "p",
+    "р": "r",
+    "с": "s",
+    "т": "t",
+    "у": "u",
+    "ф": "f",
+    "х": "h",
+    "ц": "ts",
+    "ч": "ch",
+    "ш": "sh",
+    "щ": "sch",
+    "ъ": "",
+    "ы": "y",
+    "ь": "",
+    "э": "e",
+    "ю": "yu",
+    "я": "ya",
+    "і": "i",
+    "ї": "yi",
+    "є": "e",
+    "ґ": "g",
+}
+
+
+def panel_person_name(value: str | None, max_bytes: int = 32) -> str:
+    raw = str(value or "").strip()
+    transliterated_parts: list[str] = []
+    for char in raw:
+        lower = char.lower()
+        if lower in _CYRILLIC_TRANSLIT_MAP:
+            repl = _CYRILLIC_TRANSLIT_MAP[lower]
+            if char.isupper() and repl:
+                repl = repl[0].upper() + repl[1:]
+            transliterated_parts.append(repl)
+            continue
+        transliterated_parts.append(char)
+    transliterated = "".join(transliterated_parts)
+    transliterated = unicodedata.normalize("NFKD", transliterated).encode("ascii", "ignore").decode("ascii")
+    transliterated = re.sub(r"\s+", " ", transliterated).strip()
+    result_bytes = bytearray()
+    for char in transliterated:
+        encoded = char.encode("utf-8")
+        if len(result_bytes) + len(encoded) > max_bytes:
+            break
+        result_bytes.extend(encoded)
+    return result_bytes.decode("utf-8", errors="ignore").strip()
+
+
 def xml_text(node: ET.Element | None, name: str) -> str | None:
     if node is None:
         return None
@@ -211,16 +301,19 @@ class ConfigManager:
             self.data.setdefault(section, {}).update(values)
         self.save()
 
+    def resolve_path(self, section: str, key: str, default: Any = None) -> Path:
+        raw = self.get(section, key, default)
+        path = Path(str(raw))
+        if path.is_absolute():
+            return path
+        return (self.path.parent / path).resolve()
+
 
 def setup_logging(config: ConfigManager) -> Path:
-    log_file = Path(
-        str(
-            config.get(
-                "logging",
-                "file",
-                Path(config.get("storage", "db_path", "app.db")).resolve().parent / "logs" / "app.log",
-            )
-        )
+    log_file = config.resolve_path(
+        "logging",
+        "file",
+        config.resolve_path("storage", "db_path", "app.db").parent / "logs" / "app.log",
     )
     ensure_dir(log_file.parent)
     level_name = str(config.get("logging", "level", "INFO")).upper()

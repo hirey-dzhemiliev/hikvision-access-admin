@@ -39,6 +39,7 @@ from admin_common import (
     PANEL_TIMEZONE_CHOICES,
     ConfigManager,
     SessionManager,
+    employee_display_name,
     employee_is_active,
     employee_state,
     ensure_dir,
@@ -112,7 +113,7 @@ class AdminApp:
         self.session_manager = SessionManager(config)
         self.sync_service = HikvisionSyncService(
             db,
-            Path(config.get("storage", "employee_media_dir", "media/employees")),
+            config.resolve_path("storage", "employee_media_dir", "media/employees"),
         )
         self.panel_sync_refresher = PanelSyncCacheWorker(db, config, sync_service=self.sync_service)
         self._panel_refresh_lock = threading.Lock()
@@ -133,6 +134,8 @@ class AdminApp:
         self.templates.globals["human_employee_state"] = self.human_employee_state
         self.templates.globals["employee_state_pill_class"] = self.employee_state_pill_class
         self.templates.globals["employee_toggle_label"] = self.employee_toggle_label
+        self.templates.globals["employee_display_name"] = employee_display_name
+        self.templates.globals["employee_sort_url"] = self.employee_sort_url
         self.templates.filters["format_dt"] = self._format_dt
 
     @staticmethod
@@ -358,11 +361,53 @@ class AdminApp:
     def dashboard(self, ctx: RequestContext, start_response):
         return self.render(start_response, "dashboard.html", self.dashboard_context(ctx))
 
+    def employee_sort_state(self, ctx: RequestContext) -> tuple[str, str]:
+        sort_by = (ctx.form.get("sort", "") or self._query_param(ctx, "sort", "employee_id")).strip() or "employee_id"
+        if sort_by not in {"name", "employee_id", "card_number", "status"}:
+            sort_by = "employee_id"
+        sort_dir = (ctx.form.get("dir", "") or self._query_param(ctx, "dir", "desc")).strip().lower() or "desc"
+        if sort_dir not in {"asc", "desc"}:
+            sort_dir = "desc"
+        return sort_by, sort_dir
+
+    def employee_sort_url(
+        self,
+        target_sort: str,
+        current_sort: str,
+        current_dir: str,
+        include_inactive: bool,
+        search: str,
+        view_mode: str,
+    ) -> str:
+        next_dir = "desc" if current_sort == target_sort and current_dir == "asc" else "asc"
+        params = {
+            "sort": target_sort,
+            "dir": next_dir,
+            "include_inactive": "1" if include_inactive else "0",
+            "view": view_mode or "table",
+        }
+        if search:
+            params["q"] = search
+        return f"/employees?{urlencode(params)}"
+
+    @staticmethod
+    def _normalize_optional_text(value: Any) -> str:
+        text = str(value or "").strip()
+        if text.lower() in {"none", "null"}:
+            return ""
+        return text
+
     def employees(self, ctx: RequestContext, start_response):
-        include_inactive = to_bool(ctx.form.get("include_inactive") or self._query_param(ctx, "include_inactive"))
+        include_inactive = to_bool(ctx.form.get("include_inactive") or self._query_param(ctx, "include_inactive", "1"))
         search = self._query_param(ctx, "q", "")
         view_mode = self._query_param(ctx, "view", "table")
-        employees = self.db.list_employees(include_inactive=include_inactive, search=search)
+        sort_by, sort_dir = self.employee_sort_state(ctx)
+        employees = self.db.list_employees(
+            include_inactive=include_inactive,
+            search=search,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+        )
         panels = self.db.list_panels(enabled_only=True)
         sync_status = self.build_employee_sync_status(employees, panels)
         return self.render(
@@ -377,6 +422,8 @@ class AdminApp:
                 "include_inactive": include_inactive,
                 "search": search,
                 "view_mode": view_mode,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
             },
         )
 
@@ -429,17 +476,31 @@ class AdminApp:
                     "Сотрудник удалён из локальной БД. При следующей синхронизации запись будет удалена с панелей.",
                 )
             return self.redirect(start_response, self.employee_return_url(ctx, force_include_inactive=True))
+        if action == "photo-delete" and ctx.environ.get("REQUEST_METHOD") == "POST":
+            employee = self.db.get_employee(employee_pk)
+            if employee and employee["photo_path"]:
+                self.db.update_employee_photo(employee_pk, None)
+                self.delete_employee_photo_file(employee["photo_path"])
+                return self.flash_redirect(
+                    start_response,
+                    f"/employees/{employee_pk}/edit",
+                    "Фото сотрудника удалено.",
+                )
+            return self.redirect(start_response, f"/employees/{employee_pk}/edit")
         return self.redirect(start_response, "/employees")
 
     def employee_return_url(self, ctx: RequestContext, force_include_inactive: bool = False) -> str:
         view_mode = (ctx.form.get("current_view", "") or self._query_param(ctx, "view", "")).strip() or "table"
         search = (ctx.form.get("current_search", "") or self._query_param(ctx, "q", "")).strip()
         include_inactive = force_include_inactive or to_bool(
-            ctx.form.get("current_include_inactive", "") or self._query_param(ctx, "include_inactive", "0")
+            ctx.form.get("current_include_inactive", "") or self._query_param(ctx, "include_inactive", "1")
         )
+        sort_by, sort_dir = self.employee_sort_state(ctx)
         params = {
             "view": view_mode,
             "include_inactive": "1" if include_inactive else "0",
+            "sort": sort_by,
+            "dir": sort_dir,
         }
         if search:
             params["q"] = search
@@ -447,12 +508,14 @@ class AdminApp:
 
     def save_employee(self, employee_pk: int | None, ctx: RequestContext, start_response):
         current = self.db.get_employee(employee_pk) if employee_pk else None
+        full_name = self._normalize_optional_text(ctx.form.get("full_name", ""))
         values = {
             "employee_id": ctx.form.get("employee_id", "").strip(),
-            "first_name": ctx.form.get("first_name", "").strip(),
-            "last_name": ctx.form.get("last_name", "").strip(),
-            "room_number": ctx.form.get("room_number", "").strip(),
-            "card_number": ctx.form.get("card_number", "").strip(),
+            "full_name": full_name,
+            "first_name": full_name,
+            "last_name": "",
+            "room_number": self._normalize_optional_text(ctx.form.get("room_number", "")) or "1",
+            "card_number": self._normalize_optional_text(ctx.form.get("card_number", "")),
             "comment": ctx.form.get("comment", "").strip(),
             "lifecycle_state": normalize_employee_state(ctx.form.get("lifecycle_state", EMPLOYEE_STATE_ACTIVE)),
             "photo_path": current["photo_path"] if current else None,
@@ -469,11 +532,16 @@ class AdminApp:
                 status_code="400 Bad Request",
             )
         upload = ctx.files.get("photo")
+        previous_photo_path = str(current["photo_path"]) if current and current["photo_path"] else None
+        uploaded_photo_path: str | None = None
         if upload is not None and getattr(upload, "filename", ""):
-            values["photo_path"] = self.save_employee_photo(upload)
+            uploaded_photo_path = self.save_employee_photo(upload)
+            values["photo_path"] = uploaded_photo_path
         try:
             saved_id = self.db.save_employee(values, employee_pk=employee_pk)
         except sqlite3.IntegrityError:
+            if uploaded_photo_path:
+                self.delete_employee_photo_file(uploaded_photo_path)
             return self.render_employee_form(
                 start_response,
                 ctx,
@@ -483,6 +551,8 @@ class AdminApp:
                 title="Редактировать сотрудника" if employee_pk else "Новый сотрудник",
                 status_code="400 Bad Request",
             )
+        if previous_photo_path and values.get("photo_path") and values["photo_path"] != previous_photo_path:
+            self.delete_employee_photo_file(previous_photo_path)
         return self.flash_redirect(
             start_response,
             f"/employees/{saved_id}/edit",
@@ -492,8 +562,10 @@ class AdminApp:
     def validate_employee(self, values: dict[str, Any], employee_pk: int | None = None) -> str | None:
         if not values["employee_id"]:
             return "Укажи идентификатор сотрудника."
-        if not values["first_name"] or not values["last_name"]:
-            return "Имя и фамилия обязательны."
+        if not values.get("full_name"):
+            return "Укажи имя сотрудника."
+        if len(str(values["full_name"])) > 32:
+            return "Имя сотрудника на панели не должно быть длиннее 32 символов."
         existing = self.db.get_employee_by_employee_id(values["employee_id"])
         if existing and int(existing["id"]) != int(employee_pk or 0):
             return "Сотрудник с таким идентификатором уже существует."
@@ -692,7 +764,7 @@ class AdminApp:
     _ALLOWED_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
     def save_employee_photo(self, upload) -> str:
-        employee_media_dir = Path(self.config.get("storage", "employee_media_dir", "media/employees"))
+        employee_media_dir = self.config.resolve_path("storage", "employee_media_dir", "media/employees")
         ensure_dir(employee_media_dir)
         suffix = Path(upload.filename).suffix.lower()
         if suffix not in self._ALLOWED_PHOTO_EXTENSIONS:
@@ -706,7 +778,7 @@ class AdminApp:
     def delete_employee_photo_file(self, photo_path: str | None) -> None:
         if not photo_path:
             return
-        employee_media_dir = Path(self.config.get("storage", "employee_media_dir", "media/employees"))
+        employee_media_dir = self.config.resolve_path("storage", "employee_media_dir", "media/employees")
         target = employee_media_dir / str(photo_path)
         try:
             if target.exists() and target.is_file():
@@ -1565,7 +1637,7 @@ class AdminApp:
             if to_bool(self.config.get("retention", "delete_snapshots_enabled", True))
             else 0,
         )
-        event_media_dir = Path(self.config.get("storage", "event_media_dir", "media/events"))
+        event_media_dir = self.config.resolve_path("storage", "event_media_dir", "media/events")
         for relative in set(filter(None, result["snapshot_paths"])):
             target = event_media_dir / relative
             if target.exists():
@@ -1573,7 +1645,7 @@ class AdminApp:
         return self.redirect(start_response, "/settings")
 
     def media_stats(self) -> dict[str, Any]:
-        root = Path(self.config.get("storage", "event_media_dir", "media/events"))
+        root = self.config.resolve_path("storage", "event_media_dir", "media/events")
         total_size = 0
         files_count = 0
         if root.exists():
@@ -1822,11 +1894,11 @@ class AdminApp:
         return int(value) if value.isdigit() else None
 
     def serve_media(self, path: str, start_response):
-        relative = path[len("/media/") :]
+        relative = unquote(path[len("/media/") :])
         normalized = posixpath.normpath("/" + relative).lstrip("/")
         media_roots = [
-            Path(self.config.get("storage", "employee_media_dir", "media/employees")),
-            Path(self.config.get("storage", "event_media_dir", "media/events")),
+            self.config.resolve_path("storage", "employee_media_dir", "media/employees"),
+            self.config.resolve_path("storage", "event_media_dir", "media/events"),
         ]
         for root in media_roots:
             target = root / normalized
@@ -1888,14 +1960,14 @@ def create_runtime(config_path: str | Path = "config.yaml", *, setup_logs: bool 
     if config.secret_key in {"change-me", "change-this-secret-key", ""}:
         logger.warning("secret_key uses a default/insecure value. Set a strong random key in config.yaml.")
 
-    db_path = Path(config.get("storage", "db_path", "app.db"))
+    db_path = config.resolve_path("storage", "db_path", "app.db")
     db = Database(db_path)
-    bootstrap_path = Path(config.get("storage", "bootstrap_panels_json", "panels.json"))
+    bootstrap_path = config.resolve_path("storage", "bootstrap_panels_json", "panels.json")
     db.seed_panels_from_json(bootstrap_path)
 
     media_defaults = {"employee_media_dir": "media/employees", "event_media_dir": "media/events"}
     for folder_key, folder_default in media_defaults.items():
-        ensure_dir(Path(config.get("storage", folder_key, folder_default)))
+        ensure_dir(config.resolve_path("storage", folder_key, folder_default))
 
     app = AdminApp(config, db)
     supervisor = EventSupervisor(db, config)
